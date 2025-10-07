@@ -282,6 +282,58 @@ Supported models (configured in `lib/config.ts`):
 - `gemini-1.5-pro`: 2M token limit
 - `gemini-2.0-flash-exp`: 1M token limit
 
+### AI Ignore Files
+
+Vana Source Query automatically respects AI ignore files in repository roots. This allows repo owners to exclude sensitive files, build artifacts, or noise from LLM context.
+
+**Supported formats** (all use gitignore syntax):
+- `.aiignore` — Emerging industry standard (JetBrains, proposed universal format)
+- `.aiexclude` — Google Gemini Code Assist
+- `.cursorignore` — Cursor IDE
+- `.codeiumignore` — Codeium
+- `.agentignore` — Generic format
+- `.geminiignore` — Google Gemini
+
+If multiple files exist, patterns are merged and deduplicated.
+
+**Example `.aiignore`:**
+```
+# Security - exclude all environment files
+.env*
+*.key
+*.pem
+credentials/
+
+# Build artifacts - reduce noise
+dist/
+build/
+*.min.js
+
+# Testing - not relevant for code analysis
+**/*.test.ts
+**/*.spec.ts
+coverage/
+
+# Vendored code - already documented elsewhere
+vendor/
+third_party/
+node_modules/
+```
+
+**Priority Order** (highest to lowest):
+1. User-specified `ignoreGlobs` (UI input)
+2. AI ignore file patterns (repo owner intent)
+3. `.gitignore` patterns (if `respectGitignore` enabled)
+4. Repomix default patterns
+
+**Syntax**: Standard gitignore patterns (same as `.gitignore`):
+- `**/*.test.ts` - Match all test files recursively
+- `dist/` - Match directory
+- `*.key` - Match by extension
+- `# comment` - Comments start with `#`
+
+**Security Note**: Even if secrets are accidentally committed to git, AI ignore files provide defense-in-depth by preventing them from being sent to LLMs.
+
 ---
 
 ## Local Testing

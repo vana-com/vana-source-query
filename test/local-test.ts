@@ -49,11 +49,8 @@ async function testLocalPacking() {
     }
 
     // Test 3: Assemble multiple repos
-    console.log('Test 3: Assemble context with user prompt')
-    const assembled = assemblePackedContext(
-      [result1, result2],
-      'Explain what this code does.'
-    )
+    console.log('Test 3: Assemble context (base context only)')
+    const assembled = assemblePackedContext([result1, result2])
 
     console.log('✅ Assembled context')
     console.log(`   Total chars: ${assembled.length}`)

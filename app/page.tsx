@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import Image from "next/image";
 import {
   GitHubRepo,
   SliceConfig,
@@ -9,10 +10,13 @@ import {
 } from "@/lib/types";
 import { config } from "@/lib/config";
 import { loadCache, saveCache } from "@/lib/cache";
+import { Spinner } from "@/app/components/Spinner";
 
 export default function Home() {
   // State - initialize with defaults, load from cache after mount
-  const [orgName, setOrgName] = useState("vana-com");
+  const [orgName, setOrgName] = useState(
+    process.env.NEXT_PUBLIC_GITHUB_ORG || "vana-com"
+  );
   const [repos, setRepos] = useState<GitHubRepo[]>([]);
   const [repoFilter, setRepoFilter] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -20,12 +24,16 @@ export default function Home() {
   const [repoBranches, setRepoBranches] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [countingTokens, setCountingTokens] = useState(false);
+  const [tokenCountError, setTokenCountError] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
 
   // Slice config
   const [includeGlobs, setIncludeGlobs] = useState("");
   const [ignoreGlobs, setIgnoreGlobs] = useState("");
   const [respectGitignore, setRespectGitignore] = useState(true);
+  const [respectAiIgnore, setRespectAiIgnore] = useState(true);
   const [useDefaultPatterns, setUseDefaultPatterns] = useState(true);
 
   // Results
@@ -37,6 +45,9 @@ export default function Home() {
 
   // Track last packed state to avoid unnecessary repacks
   const [lastPackedState, setLastPackedState] = useState<string | null>(null);
+
+  // Track last prompt used for token counting to avoid redundant counts
+  const lastCountedPromptRef = useRef<string>("");
 
   // AbortController for cancelling in-flight requests
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -53,6 +64,7 @@ export default function Home() {
     setIncludeGlobs(cache.includeGlobs);
     setIgnoreGlobs(cache.ignoreGlobs);
     setRespectGitignore(cache.respectGitignore);
+    setRespectAiIgnore(cache.respectAiIgnore ?? true); // Default true for new users
     setUseDefaultPatterns(cache.useDefaultPatterns);
     setUserPrompt(cache.userPrompt);
     setCacheLoaded(true);
@@ -84,6 +96,7 @@ export default function Home() {
       includeGlobs,
       ignoreGlobs,
       respectGitignore,
+      respectAiIgnore,
       useDefaultPatterns,
       userPrompt,
     });
@@ -94,11 +107,12 @@ export default function Home() {
     includeGlobs,
     ignoreGlobs,
     respectGitignore,
+    respectAiIgnore,
     useDefaultPatterns,
     userPrompt,
   ]);
 
-  // Generate state hash for comparison
+  // Generate state hash for comparison (excludes userPrompt - prompt changes only recount tokens)
   const getStateHash = useCallback(() => {
     return JSON.stringify({
       selectedRepos: Array.from(selectedRepos).sort(),
@@ -106,8 +120,8 @@ export default function Home() {
       includeGlobs,
       ignoreGlobs,
       respectGitignore,
+      respectAiIgnore,
       useDefaultPatterns,
-      userPrompt,
     });
   }, [
     selectedRepos,
@@ -115,8 +129,8 @@ export default function Home() {
     includeGlobs,
     ignoreGlobs,
     respectGitignore,
+    respectAiIgnore,
     useDefaultPatterns,
-    userPrompt,
   ]);
 
   // Auto-repack when selections or checkboxes change (immediate, no debounce)
@@ -146,7 +160,19 @@ export default function Home() {
 
       return () => clearTimeout(timeoutId);
     }
-  }, [selectedRepos, respectGitignore, useDefaultPatterns]);
+  }, [selectedRepos, respectGitignore, respectAiIgnore, useDefaultPatterns]);
+
+  // Auto-recount tokens when prompt changes (debounced to avoid excessive API calls)
+  useEffect(() => {
+    if (!packResult) return;
+    if (userPrompt === lastCountedPromptRef.current) return; // Skip if prompt hasn't changed
+
+    const timeoutId = setTimeout(() => {
+      handleCountTokens(packResult);
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [userPrompt, packResult]);
 
   // Handler for text input blur (globs, prompt, branches)
   const handleTextBlur = () => {
@@ -191,10 +217,17 @@ export default function Home() {
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
-    setLoading(true);
-    setError(null);
-    setPackResult(null);
-    setTokenResult(null);
+    // If we have existing results, use "updating" state instead of loading
+    if (packResult) {
+      setIsUpdating(true);
+      setError(null);
+      setTokenResult(null);
+    } else {
+      setLoading(true);
+      setError(null);
+      setPackResult(null);
+      setTokenResult(null);
+    }
 
     try {
       const sliceConfig: SliceConfig = {
@@ -207,6 +240,7 @@ export default function Home() {
           .map((g) => g.trim())
           .filter(Boolean),
         respectGitignore,
+        respectAiIgnore,
         useDefaultPatterns,
       };
 
@@ -224,7 +258,6 @@ export default function Home() {
         body: JSON.stringify({
           repos: repoSelections,
           sliceConfig,
-          userPrompt,
         }),
       });
 
@@ -248,6 +281,7 @@ export default function Home() {
       setError(err instanceof Error ? err.message : "Failed to pack repos");
     } finally {
       setLoading(false);
+      setIsUpdating(false);
     }
   }, [
     selectedRepos,
@@ -264,6 +298,7 @@ export default function Home() {
     signal?: AbortSignal
   ) => {
     setCountingTokens(true);
+    setTokenCountError(false); // Clear previous error
     try {
       const res = await fetch("/api/tokens", {
         method: "POST",
@@ -285,13 +320,15 @@ export default function Home() {
       }
 
       setTokenResult(json.data);
+      setTokenCountError(false);
+      lastCountedPromptRef.current = userPrompt; // Update ref on successful count
     } catch (err) {
       // Ignore abort errors, keep showing the estimate
       if (err instanceof Error && err.name === "AbortError") {
         return;
       }
       console.error("Token counting failed:", err);
-      // Don't set error - just keep showing the estimate
+      setTokenCountError(true);
     } finally {
       setCountingTokens(false);
     }
@@ -337,6 +374,10 @@ export default function Home() {
       a.download = `vana-query-${Date.now()}.txt`;
       a.click();
       URL.revokeObjectURL(url);
+
+      // Show confirmation toast
+      setDownloadMessage("✓ Downloaded");
+      setTimeout(() => setDownloadMessage(null), 2000);
     }
   };
 
@@ -354,10 +395,20 @@ export default function Home() {
       {/* Header */}
       <header className="border-b border-neutral-800">
         <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-          <h1 className="text-2xl font-bold">Vana Source Query</h1>
-          <p className="mt-2 text-sm text-neutral-400">
-            Select → Slice → Pack → Count → Copy
-          </p>
+          <div className="flex items-center gap-3">
+            <Image
+              src="/icon-no-bg.png"
+              alt="Vana Logo"
+              width={56}
+              height={56}
+            />
+            <div>
+              <h1 className="text-2xl font-bold">Vana Source Query</h1>
+              <p className="mt-0.5 text-sm text-neutral-400">
+                Load → Select → Configure → Pack → Copy
+              </p>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -365,7 +416,7 @@ export default function Home() {
       <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-8">
           {/* Left Pane: Repo Picker */}
-          <aside className="lg:sticky lg:top-8 lg:h-[calc(100vh-8rem)] overflow-auto px-2">
+          <aside className="max-h-[60vh] lg:max-h-none lg:sticky lg:top-8 lg:h-[calc(100vh-8rem)] overflow-auto px-2">
             <h2 className="text-lg font-semibold mb-6 text-neutral-100">
               Repositories
             </h2>
@@ -373,6 +424,29 @@ export default function Home() {
             {loading && repos.length === 0 ? (
               <div className="text-center py-12 text-neutral-400">
                 Loading {orgName} repositories...
+              </div>
+            ) : error && repos.length === 0 ? (
+              <div className="text-center py-8 px-4">
+                <svg
+                  className="w-10 h-10 text-neutral-600 mx-auto mb-3"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+                <p className="text-sm text-neutral-400 mb-3">{error}</p>
+                <button
+                  onClick={handleLoadRepos}
+                  className="btn-secondary text-xs"
+                >
+                  Retry
+                </button>
               </div>
             ) : repos.length > 0 ? (
               <>
@@ -531,8 +605,46 @@ export default function Home() {
 
           {/* Right Pane: Controls & Results */}
           <div className="relative pb-24">
+            {/* Global error banner */}
+            {error && selectedRepos.size > 0 && (
+              <div className="mb-6 p-4 bg-danger/10 border border-danger/30 rounded-xl flex items-start gap-3">
+                <svg
+                  className="w-5 h-5 text-danger flex-shrink-0 mt-0.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-sm text-danger">{error}</p>
+                </div>
+                <button
+                  onClick={() => setError(null)}
+                  className="text-danger/60 hover:text-danger transition"
+                  aria-label="Dismiss error"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            )}
+
             {selectedRepos.size > 0 ? (
-              <>
+              <div className="relative">
+                {/* Updating indicator - small corner badge */}
+                {isUpdating && packResult && (
+                  <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 bg-neutral-900/95 backdrop-blur-sm border border-neutral-800 rounded-lg text-xs text-neutral-400">
+                    <Spinner size="sm" />
+                    Updating...
+                  </div>
+                )}
                 {/* Token Meter - Quiet, at very top */}
                 {packResult && tokenResult && (
                   <div className="mb-6">
@@ -562,19 +674,63 @@ export default function Home() {
                       />
                     </div>
                     <div className="flex items-center justify-between text-xs text-neutral-500">
-                      <span>
+                      <span className="flex items-center gap-2">
                         {packResult.repos.reduce(
                           (sum, r) => sum + r.stats.fileCount,
                           0
                         )}{" "}
-                        files • {tokenResult.totalTokens.toLocaleString()} /{" "}
-                        {(tokenResult.modelLimit / 1000000).toFixed(1)}M tokens
+                        files •{" "}
+                        {countingTokens ? (
+                          <span className="flex items-center gap-1.5 text-neutral-400">
+                            <Spinner size="sm" />
+                            Counting...
+                          </span>
+                        ) : (
+                          <>
+                            {tokenResult.totalTokens.toLocaleString()} /{" "}
+                            {(tokenResult.modelLimit / 1000000).toFixed(1)}M
+                            tokens
+                          </>
+                        )}
                       </span>
                       <span>
                         {config.gemini.models[config.gemini.defaultModel]
                           ?.name || "Gemini 2.5 Flash"}
                       </span>
                     </div>
+
+                    {/* Token count error warning */}
+                    {tokenCountError && (
+                      <div className="mt-3 flex items-start gap-2 text-xs text-warn">
+                        <svg
+                          className="w-4 h-4 flex-shrink-0 mt-0.5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                          />
+                        </svg>
+                        <div className="flex-1">
+                          <span>
+                            Unable to get exact token count. Showing estimate
+                            (chars ÷ 4).{" "}
+                            <button
+                              onClick={() =>
+                                packResult && handleCountTokens(packResult)
+                              }
+                              className="underline hover:text-warn/80 transition"
+                            >
+                              Retry
+                            </button>
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -587,7 +743,6 @@ export default function Home() {
                     <textarea
                       value={userPrompt}
                       onChange={(e) => setUserPrompt(e.target.value)}
-                      onBlur={handleTextBlur}
                       placeholder="e.g., Explain how authentication works in this codebase"
                       rows={3}
                       className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
@@ -696,6 +851,45 @@ export default function Home() {
                         </div>
                         <div className="text-xs text-neutral-500">
                           Recommended. Excludes ignored files automatically.
+                        </div>
+                      </div>
+                    </label>
+
+                    {/* Respect .aiignore */}
+                    <label className="flex items-start gap-3 cursor-pointer group">
+                      <div className="relative mt-0.5">
+                        <input
+                          type="checkbox"
+                          checked={respectAiIgnore}
+                          onChange={(e) =>
+                            setRespectAiIgnore(e.target.checked)
+                          }
+                          className="peer sr-only"
+                        />
+                        <div className="w-4 h-4 rounded border border-neutral-700 bg-neutral-900 peer-checked:bg-brand-600 peer-checked:border-brand-600 transition flex items-center justify-center">
+                          {respectAiIgnore && (
+                            <svg
+                              className="w-3 h-3 text-white"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={3}
+                                d="M5 13l4 4L19 7"
+                              />
+                            </svg>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-neutral-200">
+                          Respect AI ignore files
+                        </div>
+                        <div className="text-xs text-neutral-500">
+                          Recommended. Checks .aiignore, .aiexclude, .cursorignore, .codeiumignore, and others.
                         </div>
                       </div>
                     </label>
@@ -880,7 +1074,7 @@ export default function Home() {
                 {/* Loading state */}
                 {loading && !packResult && (
                   <div className="flex items-center justify-center gap-3 py-12">
-                    <div className="animate-spin h-5 w-5 border-2 border-brand-600 border-t-transparent rounded-full" />
+                    <Spinner size="lg" />
                     <span className="text-sm text-neutral-300">
                       Packing {selectedRepos.size}{" "}
                       {selectedRepos.size === 1 ? "repository" : "repositories"}
@@ -919,10 +1113,25 @@ export default function Home() {
                       </div>
                     )}
 
+                    {/* Download Toast */}
+                    {downloadMessage && (
+                      <div className="mb-6 p-4 bg-ok/10 border-2 border-ok rounded-xl text-ok text-center shadow-lg">
+                        <div className="flex items-center justify-center gap-2">
+                          <span className="text-sm">{downloadMessage}</span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Directory Structure */}
                     <div className="pt-8 border-t border-neutral-800">
-                      <h3 className="text-lg font-semibold mb-6 text-neutral-100">
+                      <h3 className="text-lg font-semibold mb-6 text-neutral-100 flex items-center gap-2">
                         Directory Structure
+                        {packResult.errors.length > 0 && (
+                          <span className="text-xs bg-danger/20 text-danger px-2 py-0.5 rounded-full font-medium">
+                            {packResult.errors.length} error
+                            {packResult.errors.length > 1 ? "s" : ""}
+                          </span>
+                        )}
                       </h3>
                       <div className="space-y-3">
                         {packResult.repos.map((repo, idx) => {
@@ -986,7 +1195,7 @@ export default function Home() {
                     </div>
                   </>
                 )}
-              </>
+              </div>
             ) : (
               <div className="text-center py-12 text-neutral-400">
                 <div className="text-sm">

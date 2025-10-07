@@ -30,6 +30,7 @@ export interface SliceConfig {
   includeGlobs?: string[]
   ignoreGlobs?: string[]
   respectGitignore?: boolean
+  respectAiIgnore?: boolean
   useDefaultPatterns?: boolean
   reducers?: {
     compress?: boolean

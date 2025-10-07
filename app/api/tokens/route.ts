@@ -26,7 +26,10 @@ export async function POST(request: NextRequest) {
 
     if (!apiKey) {
       return NextResponse.json(
-        createApiError('Gemini API key required. Provide via X-Gemini-Key header or GEMINI_API_KEY env var', 'MISSING_KEY'),
+        createApiError(
+          'Gemini API key required. Set GEMINI_API_KEY in .env.local and restart server, or provide X-Gemini-Key header.',
+          'MISSING_KEY'
+        ),
         { status: 401 }
       )
     }

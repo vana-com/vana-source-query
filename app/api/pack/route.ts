@@ -21,11 +21,9 @@ export async function POST(request: NextRequest) {
     const {
       repos,
       sliceConfig,
-      userPrompt,
     }: {
       repos: RepoSelection[]
       sliceConfig: SliceConfig
-      userPrompt?: string
     } = body
 
     // Validation
@@ -69,10 +67,9 @@ export async function POST(request: NextRequest) {
       .filter(r => r.error)
       .map(r => `${r.repo}: ${r.error}`)
 
-    // Assemble context
+    // Assemble context (without prompt - client adds it before token counting)
     const combined = assemblePackedContext(
-      packedRepos.filter(r => !r.error),
-      userPrompt
+      packedRepos.filter(r => !r.error)
     )
 
     const result: PackResult = {

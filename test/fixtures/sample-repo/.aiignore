@@ -1,0 +1,20 @@
+# AI Ignore File - Test Fixture
+# This file demonstrates .aiignore syntax for excluding files from LLM context
+
+# Ignore all environment files (security)
+.env*
+*.key
+*.pem
+
+# Ignore build artifacts
+dist/
+build/
+*.min.js
+
+# Ignore test files (reduces noise in context)
+**/*.test.ts
+**/*.spec.ts
+
+# Ignore vendored dependencies
+vendor/
+third_party/

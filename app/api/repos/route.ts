@@ -25,7 +25,10 @@ export async function GET(request: NextRequest) {
 
     if (!token) {
       return NextResponse.json(
-        createApiError('GitHub token required. Provide via X-GitHub-Token header or GITHUB_TOKEN env var', 'MISSING_TOKEN'),
+        createApiError(
+          'GitHub token required. Set GITHUB_TOKEN in .env.local and restart server, or provide X-GitHub-Token header.',
+          'MISSING_TOKEN'
+        ),
         { status: 401 }
       )
     }

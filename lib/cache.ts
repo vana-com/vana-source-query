@@ -9,6 +9,7 @@ export interface VanaQueryCache {
   includeGlobs: string
   ignoreGlobs: string
   respectGitignore: boolean
+  respectAiIgnore?: boolean // Optional for backward compatibility
   useDefaultPatterns: boolean
   userPrompt: string
 }
@@ -22,6 +23,7 @@ const defaultCache: VanaQueryCache = {
   includeGlobs: '',
   ignoreGlobs: '**/*.test.ts,**/*.test.tsx,**/*.test.js,**/*.test.jsx,**/generated/**,**/__tests__/**,**/*.spec.ts,**/*.spec.tsx,**/*.spec.js,**/*.spec.jsx',
   respectGitignore: true,
+  respectAiIgnore: true,
   useDefaultPatterns: true,
   userPrompt: '',
 }

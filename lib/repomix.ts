@@ -33,6 +33,111 @@ global.fetch = async function patchedFetch(input: RequestInfo | URL, init?: Requ
 } as typeof fetch
 
 /**
+ * AI Ignore File Support
+ *
+ * Fetches and parses .aiignore files from GitHub repos.
+ * Respects repo owner's intent about what should be excluded from LLM context.
+ */
+
+/**
+ * Fetch a single file from GitHub repository
+ * @returns File contents as string, or null if file doesn't exist
+ */
+async function fetchFileFromGitHub(
+  repo: string,
+  branch: string,
+  filename: string,
+  token?: string
+): Promise<string | null> {
+  try {
+    const url = `https://api.github.com/repos/${repo}/contents/${filename}?ref=${branch}`
+    const headers: Record<string, string> = {
+      'Accept': 'application/vnd.github.v3.raw',
+    }
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+
+    const response = await fetch(url, { headers })
+
+    if (response.status === 404) {
+      return null // File doesn't exist
+    }
+
+    if (!response.ok) {
+      console.warn(`[aiignore] Failed to fetch ${filename}: ${response.status}`)
+      return null
+    }
+
+    return await response.text()
+  } catch (error) {
+    console.warn(`[aiignore] Error fetching ${filename}:`, error)
+    return null
+  }
+}
+
+/**
+ * Parse .aiignore content into patterns array
+ * Uses gitignore syntax: lines starting with # are comments, empty lines ignored
+ */
+function parseAiIgnorePatterns(content: string): string[] {
+  return content
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith('#'))
+}
+
+/**
+ * Get AI ignore patterns from multiple AI ignore files in repo root
+ *
+ * Checks for multiple ignore file formats used by different AI tools:
+ * - .aiignore (emerging industry standard - JetBrains, Cursor proposal)
+ * - .aiexclude (Google Gemini Code Assist)
+ * - .cursorignore (Cursor IDE)
+ * - .codeiumignore (Codeium)
+ * - .agentignore (generic)
+ * - .geminiignore (Google Gemini)
+ *
+ * All use gitignore syntax. Patterns are merged if multiple files exist.
+ *
+ * @returns Array of ignore patterns, empty if no files exist
+ */
+async function getAiIgnorePatterns(
+  repo: string,
+  branch: string,
+  token?: string
+): Promise<string[]> {
+  const filenames = [
+    '.aiignore',      // Industry standard (JetBrains, proposed standard)
+    '.aiexclude',     // Google Gemini Code Assist
+    '.cursorignore',  // Cursor IDE
+    '.codeiumignore', // Codeium
+    '.agentignore',   // Generic
+    '.geminiignore',  // Google Gemini
+  ]
+
+  const allPatterns: string[] = []
+  const foundFiles: string[] = []
+
+  for (const filename of filenames) {
+    const content = await fetchFileFromGitHub(repo, branch, filename, token)
+    if (content) {
+      const patterns = parseAiIgnorePatterns(content)
+      allPatterns.push(...patterns)
+      foundFiles.push(filename)
+    }
+  }
+
+  if (foundFiles.length > 0) {
+    console.log(`[aiignore] Found ${allPatterns.length} patterns from: ${foundFiles.join(', ')}`)
+  }
+
+  // Deduplicate patterns
+  return [...new Set(allPatterns)]
+}
+
+/**
  * Repomix Integration
  *
  * Two distinct paths (Simple Made Easy - Rich Hickey):
@@ -82,13 +187,28 @@ export async function packRemoteRepo(
       process.env.GITHUB_TOKEN = options.githubToken
     }
 
+    // Fetch .aiignore patterns from repo root (if enabled)
+    const aiIgnorePatterns = options.respectAiIgnore !== false
+      ? await getAiIgnorePatterns(
+          options.repo,
+          options.branch || 'main',
+          options.githubToken
+        )
+      : []
+
+    // Merge ignore patterns: user globs > .aiignore > repomix defaults
+    const allIgnorePatterns = [
+      ...(options.ignoreGlobs || []),
+      ...aiIgnorePatterns,
+    ]
+
     // Build CLI options
     const cliOptions: CliOptions = {
       output: outputFile,
       style: 'xml',
       remoteBranch: options.branch,
       include: options.includeGlobs?.join(','),
-      ignore: options.ignoreGlobs?.join(','),
+      ignore: allIgnorePatterns.length > 0 ? allIgnorePatterns.join(',') : undefined,
       removeComments: options.reducers?.removeComments,
       removeEmptyLines: options.reducers?.removeEmptyLines,
       // Explicitly disable git-dependent features (no git in Vercel)
@@ -224,7 +344,7 @@ function extractRepomixStats(output: string): { fileCount: number; approxChars: 
 /**
  * Assemble multiple packed repos into a single prompt-friendly output
  */
-export function assemblePackedContext(repos: PackedRepo[], userPrompt?: string): string {
+export function assemblePackedContext(repos: PackedRepo[]): string {
   const timestamp = new Date().toISOString().split('T')[0]
 
   let output = `# Context: Vana Source Query packed code (generated on ${timestamp})\n\n`
@@ -240,10 +360,6 @@ export function assemblePackedContext(repos: PackedRepo[], userPrompt?: string):
     output += `- Files included: ${repo.stats.fileCount} | Approx chars: ${repo.stats.approxChars.toLocaleString()}\n\n`
     output += repo.output
     output += `\n\n`
-  }
-
-  if (userPrompt && userPrompt.trim()) {
-    output += `# Prompt\n${userPrompt}\n\n`
   }
 
   return output
