@@ -996,13 +996,6 @@ export default function Home() {
                           Download
                         </button>
                       </div>
-
-                      {/* Claude limit warning */}
-                      {tokenResult && tokenResult.totalTokens > 200000 && (
-                        <p className="mt-2 text-xs text-neutral-400">
-                          ℹ️ Claude button disabled: Context exceeds Claude's 200K token limit (current: {tokenResult.totalTokens.toLocaleString()})
-                        </p>
-                      )}
                     </div>
 
                     {/* Status message */}
