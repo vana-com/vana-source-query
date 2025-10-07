@@ -24,7 +24,7 @@ export default function Home() {
   const [repoBranches, setRepoBranches] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [countingTokens, setCountingTokens] = useState(false);
-  const [tokenCountError, setTokenCountError] = useState(false);
+  const [tokenCountError, setTokenCountError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
@@ -298,7 +298,7 @@ export default function Home() {
     signal?: AbortSignal
   ) => {
     setCountingTokens(true);
-    setTokenCountError(false); // Clear previous error
+    setTokenCountError(null); // Clear previous error
     try {
       const res = await fetch("/api/tokens", {
         method: "POST",
@@ -320,25 +320,40 @@ export default function Home() {
       }
 
       setTokenResult(json.data);
-      setTokenCountError(false);
+      setTokenCountError(null);
       lastCountedPromptRef.current = userPrompt; // Update ref on successful count
     } catch (err) {
-      // Ignore abort errors, keep showing the estimate
+      // Ignore abort errors
       if (err instanceof Error && err.name === "AbortError") {
         return;
       }
       console.error("Token counting failed:", err);
-      setTokenCountError(true);
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
+      setTokenCountError(errorMsg);
     } finally {
       setCountingTokens(false);
     }
   };
 
+  // Get complete context including prompt
+  const getCompleteContext = (): string => {
+    if (!packResult) return "";
+
+    const context = packResult.combined.output;
+
+    // Prepend prompt if it exists
+    if (userPrompt.trim()) {
+      return `# User Prompt\n\n${userPrompt.trim()}\n\n---\n\n${context}`;
+    }
+
+    return context;
+  };
+
   const handleOpenInAI = async (platform: string, url: string) => {
     if (!packResult) return;
 
-    // Copy to clipboard
-    await navigator.clipboard.writeText(packResult.combined.output);
+    // Copy to clipboard with prompt
+    await navigator.clipboard.writeText(getCompleteContext());
 
     // Show toast with countdown
     setCopiedMessage(`✓ Copied to clipboard! Opening ${platform} in...`);
@@ -365,7 +380,7 @@ export default function Home() {
 
   const handleDownload = () => {
     if (packResult) {
-      const blob = new Blob([packResult.combined.output], {
+      const blob = new Blob([getCompleteContext()], {
         type: "text/plain",
       });
       const url = URL.createObjectURL(blob);
@@ -717,8 +732,7 @@ export default function Home() {
                         </svg>
                         <div className="flex-1">
                           <span>
-                            Unable to get exact token count. Showing estimate
-                            (chars ÷ 4).{" "}
+                            {tokenCountError}{" "}
                             <button
                               onClick={() =>
                                 packResult && handleCountTokens(packResult)

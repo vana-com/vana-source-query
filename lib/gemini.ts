@@ -117,8 +117,12 @@ export class GeminiClient {
         return new Error(`${context}: Invalid Gemini API key`)
       }
 
-      if (err.message?.includes('quota')) {
-        return new Error(`${context}: Gemini API quota exceeded`)
+      if (err.message?.includes('quota') || err.message?.includes('rate limit')) {
+        return new Error(`${context}: Gemini API quota exceeded or rate limited`)
+      }
+
+      if (err.message?.includes('exceeds the maximum') || err.message?.includes('token count') || err.message?.includes('too large')) {
+        return new Error(`${context}: Content exceeds Gemini's token limit for counting. Try reducing file count or adding more specific include globs.`)
       }
 
       if (err.message?.includes('model')) {

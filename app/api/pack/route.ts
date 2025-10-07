@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
       combined: {
         output: combined,
         totalChars: combined.length,
-        totalTokens: Math.ceil(combined.length / 4), // estimate
+        // No token estimate - only authoritative Gemini count
       },
       errors,
     }

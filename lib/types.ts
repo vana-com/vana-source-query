@@ -57,7 +57,7 @@ export interface PackResult {
   combined: {
     output: string
     totalChars: number
-    totalTokens: number // estimate until Gemini counts
+    // No totalTokens - only use authoritative Gemini count via /api/tokens
   }
   errors: string[]
 }
