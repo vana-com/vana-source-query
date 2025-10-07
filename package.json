@@ -1,0 +1,34 @@
+{
+  "name": "vana-query",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test:local": "node test/local-runner.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@octokit/rest": "^22.0.0",
+    "next": "^15.5.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "repomix": "^1.6.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.14",
+    "@types/node": "^20",
+    "@types/react": "^19.2.1",
+    "@types/react-dom": "^19.2.0",
+    "autoprefixer": "^10.4.0",
+    "eslint": "^9.37.0",
+    "eslint-config-next": "^15.5.4",
+    "postcss": "^8",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.7.0",
+    "typescript": "^5",
+    "vercel": "^48.2.2"
+  }
+}
