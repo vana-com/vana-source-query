@@ -162,17 +162,9 @@ export default function Home() {
     }
   }, [selectedRepos, respectGitignore, respectAiIgnore, useDefaultPatterns]);
 
-  // Auto-recount tokens when prompt changes (debounced to avoid excessive API calls)
-  useEffect(() => {
-    if (!packResult) return;
-    if (userPrompt === lastCountedPromptRef.current) return; // Skip if prompt hasn't changed
-
-    const timeoutId = setTimeout(() => {
-      handleCountTokens(packResult);
-    }, 500); // 500ms debounce
-
-    return () => clearTimeout(timeoutId);
-  }, [userPrompt, packResult]);
+  // Note: Token counting is NOT auto-triggered on prompt changes.
+  // User must manually repack to get updated token count with new prompt.
+  // This prevents constant API calls while typing.
 
   // Handler for text input blur (globs, prompt, branches)
   const handleTextBlur = () => {
