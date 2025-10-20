@@ -950,7 +950,7 @@ export default function Home() {
                         onClick={() =>
                           handleOpenInAI(
                             "AI Studio",
-                            "https://aistudio.google.com/prompts/new_chat"
+                            "https://aistudio.google.com/prompts/new_chat?model=gemini-2.5-pro"
                           )
                         }
                         className="btn-primary w-full text-base py-3"
