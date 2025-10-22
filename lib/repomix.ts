@@ -117,15 +117,22 @@ async function getAiIgnorePatterns(
     '.geminiignore',  // Google Gemini
   ]
 
+  // Fetch all files in parallel instead of sequentially
+  const results = await Promise.all(
+    filenames.map(async (filename) => {
+      const content = await fetchFileFromGitHub(repo, branch, filename, token)
+      return content ? { filename, patterns: parseAiIgnorePatterns(content) } : null
+    })
+  )
+
+  // Collect patterns from successful fetches
   const allPatterns: string[] = []
   const foundFiles: string[] = []
 
-  for (const filename of filenames) {
-    const content = await fetchFileFromGitHub(repo, branch, filename, token)
-    if (content) {
-      const patterns = parseAiIgnorePatterns(content)
-      allPatterns.push(...patterns)
-      foundFiles.push(filename)
+  for (const result of results) {
+    if (result) {
+      allPatterns.push(...result.patterns)
+      foundFiles.push(result.filename)
     }
   }
 
