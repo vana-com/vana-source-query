@@ -223,6 +223,9 @@ export async function packRemoteRepo(
       gitSortByChanges: false,
       includeDiffs: false,
       includeLogs: false,
+      // Performance: disable security checks and reduce logging
+      securityCheck: false,
+      quiet: true,
     }
 
     // Use runRemoteAction directly - GitHub archive download, no git!
@@ -297,6 +300,9 @@ export async function packLocalRepo(
       gitSortByChanges: false,
       includeDiffs: false,
       includeLogs: false,
+      // Performance: disable security checks and reduce logging
+      securityCheck: false,
+      quiet: true,
     }
 
     await runDefaultAction([options.directory], process.cwd(), cliOptions)
