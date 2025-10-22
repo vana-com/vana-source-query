@@ -187,6 +187,14 @@ export async function packRemoteRepo(
       process.env.GITHUB_TOKEN = options.githubToken
     }
 
+    // Log configuration for debugging intermittent git errors
+    console.log(`[repomix] Config for ${options.repo}:`, {
+      branch: options.branch || 'main',
+      hasToken: !!options.githubToken,
+      includeGlobs: options.includeGlobs?.length || 0,
+      ignoreGlobs: options.ignoreGlobs?.length || 0,
+    })
+
     // Fetch .aiignore patterns from repo root (if enabled)
     const aiIgnorePatterns = options.respectAiIgnore !== false
       ? await getAiIgnorePatterns(
@@ -218,7 +226,9 @@ export async function packRemoteRepo(
     }
 
     // Use runRemoteAction directly - GitHub archive download, no git!
+    console.log(`[repomix] Calling runRemoteAction for ${options.repo}`)
     await runRemoteAction(options.repo, cliOptions)
+    console.log(`[repomix] runRemoteAction completed for ${options.repo}`)
 
     const duration = Date.now() - startTime
 
@@ -235,14 +245,23 @@ export async function packRemoteRepo(
       stats,
     }
   } catch (error) {
-    console.error(`[repomix] ✗ ${options.repo}:`, error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const errorStack = error instanceof Error ? error.stack : undefined
+
+    console.error(`[repomix] ✗ ${options.repo} failed:`, {
+      message: errorMessage,
+      branch: options.branch || 'main',
+      hasToken: !!options.githubToken,
+      isGitError: errorMessage.includes('Git') || errorMessage.includes('git'),
+      stack: errorStack,
+    })
 
     return {
       repo: options.repo,
       branch: options.branch || 'main',
       output: '',
       stats: { fileCount: 0, approxChars: 0, approxTokens: 0 },
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: errorMessage,
     }
   } finally {
     // Cleanup temp file

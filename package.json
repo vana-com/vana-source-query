@@ -15,7 +15,7 @@
     "next": "^15.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "repomix": "^1.6.1"
+    "repomix": "^1.8.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.14",
