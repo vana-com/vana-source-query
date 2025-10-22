@@ -135,6 +135,9 @@ export default function Home() {
 
   // Auto-repack when selections or checkboxes change (immediate, no debounce)
   useEffect(() => {
+    // Skip during initial load - let the initial load useEffect handle it
+    if (!initialLoadDone) return;
+
     // Cancel any in-flight requests
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
