@@ -556,9 +556,10 @@ export default function Home() {
                       </div>
                       <div className="space-y-2">
                         {Array.from(selectedRepos).map((fullName) => {
+                          // Check both org repos and external repos
                           const repo = repos.find(
                             (r) => r.fullName === fullName
-                          );
+                          ) || addedExternalRepos.get(fullName);
                           if (!repo) return null;
                           const currentBranch =
                             repoBranches[fullName] || repo.defaultBranch;
