@@ -456,13 +456,15 @@ export default function Home() {
     }
   };
 
-  // Filtered repos (no pagination) - keep original order
-  const filteredRepos = repos.filter(
-    (repo) =>
-      repoFilter === "" ||
-      repo.name.toLowerCase().includes(repoFilter.toLowerCase()) ||
-      repo.fullName.toLowerCase().includes(repoFilter.toLowerCase())
-  );
+  // Filtered repos sorted by last updated (pushedAt)
+  const filteredRepos = repos
+    .filter(
+      (repo) =>
+        repoFilter === "" ||
+        repo.name.toLowerCase().includes(repoFilter.toLowerCase()) ||
+        repo.fullName.toLowerCase().includes(repoFilter.toLowerCase())
+    )
+    .sort((a, b) => new Date(b.pushedAt).getTime() - new Date(a.pushedAt).getTime());
 
   // Render
   return (
@@ -665,6 +667,9 @@ export default function Home() {
                               <span className="text-sm font-medium text-neutral-100">
                                 {validatedExternalRepo.name}
                               </span>
+                              <span className="text-xs text-neutral-500 flex-shrink-0">
+                                {validatedExternalRepo.fullName.split('/')[0]}
+                              </span>
                               <span className="text-xs text-emerald-400">
                                 {validatedExternalRepo.private ? "🔒 Private" : "🌐 Public"}
                               </span>
@@ -674,10 +679,25 @@ export default function Home() {
                                 {validatedExternalRepo.description}
                               </div>
                             )}
-                            <div className="mt-0.5 text-xs text-neutral-500">
-                              {validatedExternalRepo.fullName}
+                            <div className="mt-0.5 text-xs text-neutral-500 truncate">
+                              Updated {formatRelativeTime(validatedExternalRepo.pushedAt)}
                             </div>
                           </div>
+
+                          {/* GitHub link button */}
+                          <a
+                            href={`https://github.com/${validatedExternalRepo.fullName}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex-shrink-0 p-2 rounded hover:bg-neutral-800 transition text-neutral-400 hover:text-neutral-100"
+                            title="Open in GitHub"
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+                              <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+                            </svg>
+                          </a>
                         </div>
                       </button>
                     ) : null}
@@ -726,8 +746,13 @@ export default function Home() {
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="text-sm font-medium truncate text-neutral-100">
-                                {repo.name}
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium truncate text-neutral-100">
+                                  {repo.name}
+                                </span>
+                                <span className="text-xs text-neutral-500 flex-shrink-0">
+                                  {repo.fullName.split('/')[0]}
+                                </span>
                               </div>
                               {repo.description && (
                                 <div className="mt-0.5 text-xs text-neutral-400 truncate">
@@ -738,6 +763,21 @@ export default function Home() {
                                 Updated {formatRelativeTime(repo.pushedAt)}
                               </div>
                             </div>
+
+                            {/* GitHub link button */}
+                            <a
+                              href={`https://github.com/${repo.fullName}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex-shrink-0 p-2 rounded hover:bg-neutral-800 transition text-neutral-400 hover:text-neutral-100"
+                              title="Open in GitHub"
+                            >
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+                                <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+                              </svg>
+                            </a>
                           </div>
                         </button>
                       );
