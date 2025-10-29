@@ -467,8 +467,13 @@ export default function Home() {
     }
   };
 
-  // Merge org repos with external repos, filter, and sort by last updated
-  const allRepos = [...repos, ...Array.from(addedExternalRepos.values())];
+  // Merge org repos with external repos (deduplicate by fullName), filter, and sort by last updated
+  const allRepos = [
+    ...repos,
+    ...Array.from(addedExternalRepos.values()).filter(
+      extRepo => !repos.some(orgRepo => orgRepo.fullName === extRepo.fullName)
+    )
+  ];
   const filteredRepos = allRepos
     .filter(
       (repo) =>
