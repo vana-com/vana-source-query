@@ -620,8 +620,8 @@ export default function Home() {
                   {filteredRepos.length === 1 ? "repository" : "repositories"}
                 </div>
 
-                {/* External Repo Validation (when search contains /) */}
-                {externalRepoInput && (
+                {/* External Repo Validation (when search contains / and not already added) */}
+                {externalRepoInput && (!validatedExternalRepo || !addedExternalRepos.has(validatedExternalRepo.fullName)) && (
                   <div className="mb-4 p-3 border border-neutral-800 rounded-lg bg-neutral-900/30">
                     <div className="text-xs text-neutral-400 mb-2">
                       External Repository
