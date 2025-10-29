@@ -56,6 +56,13 @@ export default function Home() {
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [cacheLoaded, setCacheLoaded] = useState(false);
 
+  // External repo state
+  const [externalRepoInput, setExternalRepoInput] = useState<string>("");
+  const [validatedExternalRepo, setValidatedExternalRepo] = useState<GitHubRepo | null>(null);
+  const [externalRepoValidating, setExternalRepoValidating] = useState(false);
+  const [externalRepoError, setExternalRepoError] = useState<string | null>(null);
+  const externalRepoTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Load from cache on mount (client-side only to avoid hydration mismatch)
   useEffect(() => {
     const cache = loadCache();
@@ -165,6 +172,63 @@ export default function Home() {
     }
   }, [selectedRepos, respectGitignore, respectAiIgnore, useDefaultPatterns]);
 
+  // Debounced validation for external repos
+  useEffect(() => {
+    // Clear previous timeout
+    if (externalRepoTimeoutRef.current) {
+      clearTimeout(externalRepoTimeoutRef.current);
+    }
+
+    // Reset validation state
+    setValidatedExternalRepo(null);
+    setExternalRepoError(null);
+
+    // Check if search input contains a slash (external repo pattern)
+    if (!repoFilter.includes('/')) {
+      setExternalRepoInput("");
+      return;
+    }
+
+    // Extract the external repo input
+    const input = repoFilter.trim();
+    setExternalRepoInput(input);
+
+    // Validate format (must be owner/repo)
+    const parts = input.split('/');
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+      setExternalRepoError("Use format: owner/repo");
+      return;
+    }
+
+    // Debounce validation
+    setExternalRepoValidating(true);
+    externalRepoTimeoutRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/repos/validate?repo=${encodeURIComponent(input)}`);
+        const json = await res.json();
+
+        if (json.success) {
+          setValidatedExternalRepo(json.data.repo);
+          setExternalRepoError(null);
+        } else {
+          setValidatedExternalRepo(null);
+          setExternalRepoError(json.error || "Repository not found");
+        }
+      } catch (error) {
+        setValidatedExternalRepo(null);
+        setExternalRepoError("Failed to validate repository");
+      } finally {
+        setExternalRepoValidating(false);
+      }
+    }, 500);
+
+    return () => {
+      if (externalRepoTimeoutRef.current) {
+        clearTimeout(externalRepoTimeoutRef.current);
+      }
+    };
+  }, [repoFilter]);
+
   // Note: Token counting is NOT auto-triggered on prompt changes.
   // User must manually repack to get updated token count with new prompt.
   // This prevents constant API calls while typing.
@@ -186,7 +250,8 @@ export default function Home() {
     setError(null);
 
     try {
-      const res = await fetch(`/api/repos?org=${orgName}`);
+      // Fetch repos from all orgs user has access to (no org parameter)
+      const res = await fetch(`/api/repos`);
 
       const json = await res.json();
 
@@ -433,7 +498,7 @@ export default function Home() {
 
             {loading && repos.length === 0 ? (
               <div className="text-center py-12 text-neutral-400">
-                Loading {orgName} repositories...
+                Loading repositories...
               </div>
             ) : error && repos.length === 0 ? (
               <div className="text-center py-8 px-4">
@@ -541,6 +606,83 @@ export default function Home() {
                   {filteredRepos.length}{" "}
                   {filteredRepos.length === 1 ? "repository" : "repositories"}
                 </div>
+
+                {/* External Repo Validation (when search contains /) */}
+                {externalRepoInput && (
+                  <div className="mb-4 p-3 border border-neutral-800 rounded-lg bg-neutral-900/30">
+                    <div className="text-xs text-neutral-400 mb-2">
+                      External Repository
+                    </div>
+                    {externalRepoValidating ? (
+                      <div className="flex items-center gap-2 text-sm text-neutral-300">
+                        <Spinner />
+                        <span>Validating {externalRepoInput}...</span>
+                      </div>
+                    ) : externalRepoError ? (
+                      <div className="flex items-center gap-2 text-sm text-red-400">
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                        </svg>
+                        <span>{externalRepoError}</span>
+                      </div>
+                    ) : validatedExternalRepo ? (
+                      <button
+                        onClick={() => {
+                          const newSet = new Set(selectedRepos);
+                          const isSelected = selectedRepos.has(validatedExternalRepo.fullName);
+                          if (isSelected) {
+                            newSet.delete(validatedExternalRepo.fullName);
+                          } else {
+                            newSet.add(validatedExternalRepo.fullName);
+                          }
+                          setSelectedRepos(newSet);
+                        }}
+                        className="w-full text-left p-2 rounded hover:bg-neutral-800/50 transition"
+                      >
+                        <div className="flex items-center gap-3">
+                          {/* Checkmark */}
+                          <div className="flex-shrink-0 w-5 h-5">
+                            {selectedRepos.has(validatedExternalRepo.fullName) && (
+                              <div className="w-5 h-5 rounded-full bg-brand-600 flex items-center justify-center">
+                                <svg
+                                  className="w-3 h-3 text-white"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={3}
+                                    d="M5 13l4 4L19 7"
+                                  />
+                                </svg>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-neutral-100">
+                                {validatedExternalRepo.name}
+                              </span>
+                              <span className="text-xs text-emerald-400">
+                                {validatedExternalRepo.private ? "🔒 Private" : "🌐 Public"}
+                              </span>
+                            </div>
+                            {validatedExternalRepo.description && (
+                              <div className="mt-0.5 text-xs text-neutral-400 truncate">
+                                {validatedExternalRepo.description}
+                              </div>
+                            )}
+                            <div className="mt-0.5 text-xs text-neutral-500">
+                              {validatedExternalRepo.fullName}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    ) : null}
+                  </div>
+                )}
 
                 {/* Repo List */}
                 {filteredRepos.length > 0 ? (

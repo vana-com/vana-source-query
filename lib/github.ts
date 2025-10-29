@@ -79,6 +79,25 @@ export class GitHubClient {
   }
 
   /**
+   * List organizations the authenticated user belongs to
+   * @throws Error with clear message on failure
+   */
+  async listUserOrgs(): Promise<Array<{ login: string; description: string | null }>> {
+    try {
+      const { data } = await this.octokit.rest.orgs.listForAuthenticatedUser({
+        per_page: 100,
+      })
+
+      return data.map(org => ({
+        login: org.login,
+        description: org.description,
+      }))
+    } catch (error) {
+      throw this.handleError(error, 'Failed to list user organizations')
+    }
+  }
+
+  /**
    * Validate that the token has required permissions
    * @throws Error if token is invalid or lacks permissions
    */

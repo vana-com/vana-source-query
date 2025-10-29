@@ -7,6 +7,8 @@ export const runtime = 'nodejs'
 /**
  * GET /api/repos?org=<org>&type=<org|user>
  * List repositories for an organization or user
+ *
+ * If org is omitted, returns repos from all orgs the user has access to
  */
 export async function GET(request: NextRequest) {
   try {
@@ -14,14 +16,6 @@ export async function GET(request: NextRequest) {
     const org = searchParams.get('org')
     const type = searchParams.get('type') || 'org' // 'org' or 'user'
     const token = request.headers.get('x-github-token') || process.env.GITHUB_TOKEN
-
-    // Validation
-    if (!org) {
-      return NextResponse.json(
-        createApiError('Missing required parameter: org', 'MISSING_PARAM'),
-        { status: 400 }
-      )
-    }
 
     if (!token) {
       return NextResponse.json(
@@ -33,14 +27,43 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Create client and fetch repos
+    // Create client
     const client = await createGitHubClient(token)
 
-    const repos = type === 'user'
-      ? await client.listUserRepos(org)
-      : await client.listOrgRepos(org)
+    // If org specified, fetch repos for that org/user only
+    if (org) {
+      const repos = type === 'user'
+        ? await client.listUserRepos(org)
+        : await client.listOrgRepos(org)
 
-    return NextResponse.json(createApiSuccess(repos))
+      return NextResponse.json(createApiSuccess(repos))
+    }
+
+    // Otherwise, fetch repos from all orgs user has access to
+    const orgs = await client.listUserOrgs()
+    console.log(`[api/repos] Fetching repos from ${orgs.length} orgs`)
+
+    // Fetch repos from all orgs in parallel
+    const repoLists = await Promise.all(
+      orgs.map(async (org) => {
+        try {
+          return await client.listOrgRepos(org.login)
+        } catch (error) {
+          console.warn(`[api/repos] Failed to fetch repos for org ${org.login}:`, error)
+          return []
+        }
+      })
+    )
+
+    // Flatten and deduplicate by fullName
+    const allRepos = repoLists.flat()
+    const uniqueRepos = Array.from(
+      new Map(allRepos.map(repo => [repo.fullName, repo])).values()
+    )
+
+    console.log(`[api/repos] Fetched ${uniqueRepos.length} unique repos from ${orgs.length} orgs`)
+
+    return NextResponse.json(createApiSuccess(uniqueRepos))
   } catch (error) {
     console.error('[api/repos] Error:', error)
 
