@@ -467,8 +467,9 @@ export default function Home() {
     }
   };
 
-  // Filtered repos sorted by last updated (pushedAt)
-  const filteredRepos = repos
+  // Merge org repos with external repos, filter, and sort by last updated
+  const allRepos = [...repos, ...Array.from(addedExternalRepos.values())];
+  const filteredRepos = allRepos
     .filter(
       (repo) =>
         repoFilter === "" ||
@@ -799,97 +800,8 @@ export default function Home() {
                   </div>
                 ) : null}
 
-                {/* Added External Repos (always visible if any have been added) */}
-                {addedExternalRepos.size > 0 && (
-                  <div className="mt-4">
-                    <div className="text-xs text-neutral-500 mb-2 px-3">
-                      External Repositories ({addedExternalRepos.size})
-                    </div>
-                    <div className="border-t border-neutral-900">
-                      {Array.from(addedExternalRepos.values()).map((repo) => {
-                        const isSelected = selectedRepos.has(repo.fullName);
-                        return (
-                          <button
-                            key={repo.fullName}
-                            onClick={() => {
-                              const newSet = new Set(selectedRepos);
-                              if (isSelected) {
-                                newSet.delete(repo.fullName);
-                              } else {
-                                newSet.add(repo.fullName);
-                              }
-                              setSelectedRepos(newSet);
-                            }}
-                            aria-selected={isSelected}
-                            className="group w-full text-left px-3 py-3 border-b border-neutral-900 transition focus-ring hover:bg-neutral-900/30"
-                          >
-                            <div className="flex items-center gap-3">
-                              {/* Checkmark */}
-                              <div className="flex-shrink-0 w-5 h-5">
-                                {isSelected && (
-                                  <div className="w-5 h-5 rounded-full bg-brand-600 flex items-center justify-center">
-                                    <svg
-                                      className="w-3 h-3 text-white"
-                                      fill="none"
-                                      viewBox="0 0 24 24"
-                                      stroke="currentColor"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={3}
-                                        d="M5 13l4 4L19 7"
-                                      />
-                                    </svg>
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-medium truncate text-neutral-100">
-                                    {repo.name}
-                                  </span>
-                                  <span className="text-xs text-neutral-500 flex-shrink-0">
-                                    {repo.fullName.split('/')[0]}
-                                  </span>
-                                  <span className="text-xs text-emerald-400">
-                                    🌐 External
-                                  </span>
-                                </div>
-                                {repo.description && (
-                                  <div className="mt-0.5 text-xs text-neutral-400 truncate">
-                                    {repo.description}
-                                  </div>
-                                )}
-                                <div className="mt-0.5 text-xs text-neutral-500 truncate">
-                                  Updated {formatRelativeTime(repo.pushedAt)}
-                                </div>
-                              </div>
-
-                              {/* GitHub link button */}
-                              <a
-                                href={`https://github.com/${repo.fullName}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="flex-shrink-0 p-2 rounded hover:bg-neutral-800 transition text-neutral-400 hover:text-neutral-100"
-                                title="Open in GitHub"
-                              >
-                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                  <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
-                                  <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
-                                </svg>
-                              </a>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
                 {/* No results message */}
-                {filteredRepos.length === 0 && addedExternalRepos.size === 0 && (
+                {filteredRepos.length === 0 && (
                   <div className="text-center py-12 text-neutral-500">
                     <div className="text-sm">No repositories found</div>
                     <div className="text-xs mt-1">
