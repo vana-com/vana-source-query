@@ -627,8 +627,10 @@ export default function Home() {
                   {filteredRepos.length === 1 ? "repository" : "repositories"}
                 </div>
 
-                {/* External Repo Validation (when search contains / and not already added) */}
-                {externalRepoInput && (!validatedExternalRepo || !addedExternalRepos.has(validatedExternalRepo.fullName)) && (
+                {/* External Repo Validation (when search contains / and not already available) */}
+                {externalRepoInput && (!validatedExternalRepo ||
+                  (!addedExternalRepos.has(validatedExternalRepo.fullName) &&
+                   !repos.some(r => r.fullName === validatedExternalRepo.fullName))) && (
                   <div className="mb-4 p-3 border border-neutral-800 rounded-lg bg-neutral-900/30">
                     <div className="text-xs text-neutral-400 mb-2">
                       External Repository
@@ -654,8 +656,10 @@ export default function Home() {
                             newSet.delete(validatedExternalRepo.fullName);
                           } else {
                             newSet.add(validatedExternalRepo.fullName);
-                            // Add to persistent external repos map
-                            setAddedExternalRepos(prev => new Map(prev).set(validatedExternalRepo.fullName, validatedExternalRepo));
+                            // Add to persistent external repos map (only if not already in org repos)
+                            if (!repos.some(r => r.fullName === validatedExternalRepo.fullName)) {
+                              setAddedExternalRepos(prev => new Map(prev).set(validatedExternalRepo.fullName, validatedExternalRepo));
+                            }
                           }
                           setSelectedRepos(newSet);
                         }}
