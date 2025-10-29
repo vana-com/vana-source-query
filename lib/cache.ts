@@ -12,6 +12,15 @@ export interface VanaQueryCache {
   respectAiIgnore?: boolean // Optional for backward compatibility
   useDefaultPatterns: boolean
   userPrompt: string
+  externalRepos?: Array<{
+    fullName: string
+    name: string
+    defaultBranch: string
+    pushedAt: string
+    size: number
+    private: boolean
+    description?: string | null
+  }> // Optional for backward compatibility
 }
 
 const CACHE_KEY = 'vana-query-cache'
@@ -26,6 +35,7 @@ const defaultCache: VanaQueryCache = {
   respectAiIgnore: true,
   useDefaultPatterns: true,
   userPrompt: '',
+  externalRepos: [],
 }
 
 /**
