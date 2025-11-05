@@ -54,10 +54,10 @@ export interface PackedRepo {
 
 export interface PackResult {
   repos: PackedRepo[]
-  combined: {
-    output: string
-    totalChars: number
-    // No totalTokens - only use authoritative Gemini count via /api/tokens
+  totalStats: {
+    fileCount: number
+    approxChars: number
+    approxTokens: number // rough estimate: sum of all repo estimates
   }
   errors: string[]
 }

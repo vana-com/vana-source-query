@@ -255,14 +255,37 @@ export async function packRemoteRepo(
       stats,
     }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const rawMessage = error instanceof Error ? error.message : 'Unknown error'
     const errorStack = error instanceof Error ? error.stack : undefined
 
+    // Translate common Repomix errors into user-friendly messages
+    let errorMessage = rawMessage
+
+    // GitHub archive download failures often manifest as "Git not installed" errors
+    // but we're not using git binary - it's actually a GitHub API/network issue
+    if (rawMessage.includes('Git') || rawMessage.includes('git')) {
+      if (rawMessage.includes('404') || rawMessage.includes('not found')) {
+        errorMessage = `Repository not found or invalid branch "${options.branch || 'main'}". Check that the repo exists and the branch name is correct.`
+      } else if (rawMessage.includes('401') || rawMessage.includes('403') || rawMessage.includes('Unauthorized')) {
+        errorMessage = `Authentication failed. Check that your GitHub token has access to ${options.repo}.`
+      } else {
+        errorMessage = `Failed to download repository archive: ${rawMessage}. This may be a network issue or GitHub API error.`
+      }
+    }
+    // Handle explicit 404 errors from GitHub API
+    else if (rawMessage.includes('404') || rawMessage.includes('not found')) {
+      errorMessage = `Repository or branch not found: ${options.repo}@${options.branch || 'main'}. Verify the repository exists and the branch name is correct.`
+    }
+    // Handle auth errors
+    else if (rawMessage.includes('401') || rawMessage.includes('403') || rawMessage.includes('Unauthorized')) {
+      errorMessage = `Access denied to ${options.repo}. Ensure your GitHub token has the required permissions.`
+    }
+
     console.error(`[repomix] ✗ ${options.repo} failed:`, {
-      message: errorMessage,
+      rawMessage,
+      translatedMessage: errorMessage,
       branch: options.branch || 'main',
       hasToken: !!options.githubToken,
-      isGitError: errorMessage.includes('Git') || errorMessage.includes('git'),
       stack: errorStack,
     })
 
@@ -375,24 +398,8 @@ function extractRepomixStats(output: string): { fileCount: number; approxChars: 
 
 /**
  * Assemble multiple packed repos into a single prompt-friendly output
+ *
+ * @deprecated Use lib/assembly.ts directly for client-side usage
+ * Re-exported here for backward compatibility
  */
-export function assemblePackedContext(repos: PackedRepo[]): string {
-  const timestamp = new Date().toISOString().split('T')[0]
-
-  let output = `# Context: Vana Source Query packed code (generated on ${timestamp})\n\n`
-
-  for (const repo of repos) {
-    if (repo.error) {
-      output += `## Repo: ${repo.repo} (${repo.branch}) — ERROR\n`
-      output += `Error: ${repo.error}\n\n`
-      continue
-    }
-
-    output += `## Repo: ${repo.repo} (${repo.branch})\n`
-    output += `- Files included: ${repo.stats.fileCount} | Approx chars: ${repo.stats.approxChars.toLocaleString()}\n\n`
-    output += repo.output
-    output += `\n\n`
-  }
-
-  return output
-}
+export { assemblePackedContext } from './assembly'

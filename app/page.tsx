@@ -11,6 +11,7 @@ import {
 import { config } from "@/lib/config";
 import { loadCache, saveCache } from "@/lib/cache";
 import { Spinner } from "@/app/components/Spinner";
+import { assemblePackedContext } from "@/lib/assembly";
 
 export default function Home() {
   // State - initialize with defaults, load from cache after mount
@@ -25,7 +26,6 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [countingTokens, setCountingTokens] = useState(false);
   const [tokenCountError, setTokenCountError] = useState<string | null>(null);
-  const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
 
@@ -288,17 +288,10 @@ export default function Home() {
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
-    // If we have existing results, use "updating" state instead of loading
-    if (packResult) {
-      setIsUpdating(true);
-      setError(null);
-      setTokenResult(null);
-    } else {
-      setLoading(true);
-      setError(null);
-      setPackResult(null);
-      setTokenResult(null);
-    }
+    setLoading(true);
+    setError(null);
+    setTokenResult(null);
+    // Keep existing packResult during re-pack to avoid UI flash
 
     try {
       const sliceConfig: SliceConfig = {
@@ -352,7 +345,6 @@ export default function Home() {
       setError(err instanceof Error ? err.message : "Failed to pack repos");
     } finally {
       setLoading(false);
-      setIsUpdating(false);
     }
   }, [
     selectedRepos,
@@ -360,8 +352,10 @@ export default function Home() {
     includeGlobs,
     ignoreGlobs,
     respectGitignore,
+    respectAiIgnore,
     useDefaultPatterns,
-    userPrompt,
+    // Note: userPrompt intentionally excluded - prompt changes should NOT trigger re-packing
+    // handleCountTokens will use current prompt value when called
   ]);
 
   const handleCountTokens = async (
@@ -371,6 +365,13 @@ export default function Home() {
     setCountingTokens(true);
     setTokenCountError(null); // Clear previous error
     try {
+      // Assemble context on-demand with current prompt
+      // This allows prompt changes to trigger re-counting without re-packing!
+      const contextText = assemblePackedContext(
+        result.repos.filter(r => !r.error),
+        userPrompt
+      );
+
       const res = await fetch("/api/tokens", {
         method: "POST",
         headers: {
@@ -379,7 +380,7 @@ export default function Home() {
         signal,
         body: JSON.stringify({
           modelId: config.gemini.defaultModel,
-          contextText: result.combined.output,
+          contextText,
           userPrompt,
         }),
       });
@@ -407,17 +408,16 @@ export default function Home() {
   };
 
   // Get complete context including prompt
+  // Assembles on-demand from packed repos, allowing prompt to be edited after packing
   const getCompleteContext = (): string => {
     if (!packResult) return "";
 
-    const context = packResult.combined.output;
-
-    // Prepend prompt if it exists
-    if (userPrompt.trim()) {
-      return `# User Prompt\n\n${userPrompt.trim()}\n\n---\n\n${context}`;
-    }
-
-    return context;
+    // Assemble context from packed repos with current prompt
+    // This allows prompt to be changed without re-packing!
+    return assemblePackedContext(
+      packResult.repos.filter(r => !r.error),
+      userPrompt
+    );
   };
 
   const handleOpenInAI = async (platform: string, url: string) => {
@@ -855,44 +855,68 @@ export default function Home() {
               </div>
             )}
 
-            {selectedRepos.size > 0 ? (
-              <div className="relative">
-                {/* Updating indicator - small corner badge */}
-                {isUpdating && packResult && (
-                  <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 bg-neutral-900/95 backdrop-blur-sm border border-neutral-800 rounded-lg text-xs text-neutral-400">
-                    <Spinner size="sm" />
-                    Updating...
-                  </div>
-                )}
-                {/* Token Meter - Quiet, at very top */}
-                {packResult && tokenResult && (
-                  <div className="mb-6">
-                    <div
-                      className="w-full h-1.5 bg-neutral-900 rounded-full overflow-hidden mb-2"
-                      role="progressbar"
-                      aria-valuenow={tokenResult.totalTokens}
-                      aria-valuemin={0}
-                      aria-valuemax={tokenResult.modelLimit}
-                      aria-label={`${tokenResult.totalTokens.toLocaleString()} of ${tokenResult.modelLimit.toLocaleString()} tokens used`}
-                    >
-                      <div
-                        className={`h-full transition-all duration-500 ${
-                          tokenResult.status === "over"
-                            ? "bg-danger"
-                            : tokenResult.status === "near"
-                            ? "bg-warn"
-                            : "bg-ok"
-                        }`}
-                        style={{
-                          width: `${Math.min(
-                            (tokenResult.totalTokens / tokenResult.modelLimit) *
-                              100,
-                            100
-                          )}%`,
-                        }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-neutral-500">
+            {/* Prompt input - always visible */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium mb-2 text-neutral-200">
+                Your question or task (optional)
+              </label>
+              <textarea
+                value={userPrompt}
+                onChange={(e) => setUserPrompt(e.target.value)}
+                placeholder="e.g., Explain how authentication works in this codebase"
+                rows={3}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+              />
+              {packResult && userPrompt !== lastCountedPromptRef.current && (
+                <div className="mt-2 flex items-center justify-between">
+                  <p className="text-xs text-neutral-500">
+                    Prompt changed — token count may be outdated
+                  </p>
+                  <button
+                    onClick={() => handleCountTokens(packResult)}
+                    disabled={countingTokens}
+                    className="btn-secondary text-xs disabled:opacity-50"
+                  >
+                    {countingTokens ? "Counting..." : "Update Token Count"}
+                  </button>
+                </div>
+              )}
+              {!packResult && selectedRepos.size === 0 && (
+                <p className="mt-1.5 text-xs text-neutral-500">
+                  Select repositories to start packing
+                </p>
+              )}
+            </div>
+
+            {/* Token Meter - Only show when pack result exists */}
+            {packResult && tokenResult && (
+              <div className="mb-6">
+                <div
+                  className="w-full h-1.5 bg-neutral-900 rounded-full overflow-hidden mb-2"
+                  role="progressbar"
+                  aria-valuenow={tokenResult.totalTokens}
+                  aria-valuemin={0}
+                  aria-valuemax={tokenResult.modelLimit}
+                  aria-label={`${tokenResult.totalTokens.toLocaleString()} of ${tokenResult.modelLimit.toLocaleString()} tokens used`}
+                >
+                  <div
+                    className={`h-full transition-all duration-500 ${
+                      tokenResult.status === "over"
+                        ? "bg-danger"
+                        : tokenResult.status === "near"
+                        ? "bg-warn"
+                        : "bg-ok"
+                    }`}
+                    style={{
+                      width: `${Math.min(
+                        (tokenResult.totalTokens / tokenResult.modelLimit) *
+                          100,
+                        100
+                      )}%`,
+                    }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-xs text-neutral-500">
                       <span className="flex items-center gap-2">
                         {packResult.repos.reduce(
                           (sum, r) => sum + r.stats.fileCount,
@@ -952,29 +976,8 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Prompt input */}
-                {packResult && (
-                  <div className="mb-6">
-                    <label className="block text-sm font-medium mb-2 text-neutral-200">
-                      Your question or task (optional)
-                    </label>
-                    <textarea
-                      value={userPrompt}
-                      onChange={(e) => setUserPrompt(e.target.value)}
-                      placeholder="e.g., Explain how authentication works in this codebase"
-                      rows={3}
-                      className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                    />
-                    <p className="mt-1.5 text-xs text-neutral-500">
-                      This will be appended to the packed code before sending to
-                      the AI.
-                    </p>
-                  </div>
-                )}
-
                 {/* Filters - Collapsed by default */}
-                {!loading && (
-                  <details className="mb-8 group">
+                <details className="mb-8 group">
                   <summary className="cursor-pointer list-none mb-6">
                     <div className="inline-flex items-center gap-2 text-sm text-neutral-400 hover:text-neutral-200 transition">
                       <svg
@@ -1151,12 +1154,10 @@ export default function Home() {
                       </div>
                     </label>
                   </div>
-                  </details>
-                )}
+                </details>
 
                 {/* Primary CTAs */}
-                {packResult && (
-                  <div className="mb-8">
+                <div className="mb-8">
                     <div className="flex flex-col gap-3">
                       <button
                         onClick={() =>
@@ -1166,7 +1167,7 @@ export default function Home() {
                           )
                         }
                         className="btn-primary w-full text-base py-3"
-                        disabled={tokenResult?.status === "over"}
+                        disabled={!packResult || tokenResult?.status === "over"}
                       >
                         Copy & open AI Studio
                       </button>
@@ -1179,6 +1180,7 @@ export default function Home() {
                             )
                           }
                           className="btn-secondary flex-1"
+                          disabled={!packResult}
                         >
                           Gemini
                         </button>
@@ -1187,7 +1189,7 @@ export default function Home() {
                             handleOpenInAI("Claude", "https://claude.ai/new")
                           }
                           className="btn-secondary flex-1"
-                          disabled={!!(tokenResult && tokenResult.totalTokens > 200000)}
+                          disabled={!packResult || !!(tokenResult && tokenResult.totalTokens > 200000)}
                           title={
                             tokenResult && tokenResult.totalTokens > 200000
                               ? `Claude limit: 200K tokens (current: ${tokenResult.totalTokens.toLocaleString()})`
@@ -1196,7 +1198,7 @@ export default function Home() {
                         >
                           Claude
                         </button>
-                        <button onClick={handleDownload} className="btn-ghost">
+                        <button onClick={handleDownload} className="btn-ghost" disabled={!packResult}>
                           Download
                         </button>
                       </div>
@@ -1279,11 +1281,10 @@ export default function Home() {
                         )}
                       </div>
                     )}
-                  </div>
-                )}
+                </div>
 
                 {/* Loading state */}
-                {loading && !packResult && (
+                {loading && (
                   <div className="flex items-center justify-center gap-3 py-12">
                     <Spinner size="lg" />
                     <span className="text-sm text-neutral-300">
@@ -1406,14 +1407,6 @@ export default function Home() {
                     </div>
                   </>
                 )}
-              </div>
-            ) : (
-              <div className="text-center py-12 text-neutral-400">
-                <div className="text-sm">
-                  Select repositories to get started
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>

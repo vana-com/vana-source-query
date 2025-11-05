@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { packRemoteRepo, assemblePackedContext } from '@/lib/repomix'
+import { packRemoteRepo } from '@/lib/repomix'
 import { createApiSuccess, createApiError, PackResult, RepoSelection, SliceConfig } from '@/lib/types'
 
 export const runtime = 'nodejs'
@@ -67,18 +67,20 @@ export async function POST(request: NextRequest) {
       .filter(r => r.error)
       .map(r => `${r.repo}: ${r.error}`)
 
-    // Assemble context (without prompt - client adds it before token counting)
-    const combined = assemblePackedContext(
-      packedRepos.filter(r => !r.error)
+    // Calculate aggregate stats from successful repos
+    const successfulRepos = packedRepos.filter(r => !r.error)
+    const totalStats = successfulRepos.reduce(
+      (acc, repo) => ({
+        fileCount: acc.fileCount + repo.stats.fileCount,
+        approxChars: acc.approxChars + repo.stats.approxChars,
+        approxTokens: acc.approxTokens + repo.stats.approxTokens,
+      }),
+      { fileCount: 0, approxChars: 0, approxTokens: 0 }
     )
 
     const result: PackResult = {
       repos: packedRepos,
-      combined: {
-        output: combined,
-        totalChars: combined.length,
-        // No token estimate - only authoritative Gemini count
-      },
+      totalStats,
       errors,
     }
 

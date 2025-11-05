@@ -48,15 +48,26 @@ async function testLocalPacking() {
       console.log(`   Tokens (approx): ${result2.stats.approxTokens}\n`)
     }
 
-    // Test 3: Assemble multiple repos
-    console.log('Test 3: Assemble context (base context only)')
+    // Test 3: Assemble multiple repos (without prompt)
+    console.log('Test 3: Assemble context (without prompt)')
     const assembled = assemblePackedContext([result1, result2])
 
     console.log('✅ Assembled context')
     console.log(`   Total chars: ${assembled.length}`)
     console.log(`   Preview:\n`)
     console.log(assembled.slice(0, 500))
-    console.log('\n   ... (truncated)')
+    console.log('\n   ... (truncated)\n')
+
+    // Test 4: Assemble with user prompt
+    console.log('Test 4: Assemble context (with user prompt)')
+    const assembledWithPrompt = assemblePackedContext(
+      [result1, result2],
+      'Explain the main functionality of this codebase'
+    )
+
+    console.log('✅ Assembled with prompt')
+    console.log(`   Total chars: ${assembledWithPrompt.length}`)
+    console.log(`   Prompt is prepended: ${assembledWithPrompt.startsWith('# User Prompt') ? 'Yes ✓' : 'No ✗'}`)
 
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     console.log('✅ All tests passed!')
