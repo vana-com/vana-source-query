@@ -1236,7 +1236,7 @@ export default function Home() {
           </aside>
 
           {/* Right Pane: Controls & Results */}
-          <div className="relative pb-24 px-6 sm:px-8 lg:px-12">
+          <div className="flex flex-col px-6 sm:px-8 lg:px-12 min-h-[calc(100vh-4rem)] lg:min-h-screen">
             {/* Global error banner */}
             {error && selectedRepos.size > 0 && (
               <div className="mb-6 p-4 bg-danger/10 border border-danger/30 rounded-xl flex items-start gap-3">
@@ -1269,11 +1269,10 @@ export default function Home() {
             )}
 
                 {/* Chat Interface - Main CTA */}
-                {selectedRepos.size > 0 && (
+                {packHash && (
                   <Chat
-                    packedContext={packResult ? getCompleteContext() : null}
+                    packedContext={getCompleteContext()}
                     packHash={packHash}
-                    isContextLoading={loading}
                   />
                 )}
 

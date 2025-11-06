@@ -6,9 +6,8 @@ import { saveConversation, loadConversation, deleteConversation } from '@/lib/ch
 import { ChatMessage } from './ChatMessage'
 
 interface ChatProps {
-  packedContext: string | null
-  packHash: string | null
-  isContextLoading?: boolean
+  packedContext: string
+  packHash: string
   geminiApiKey?: string
 }
 
@@ -16,7 +15,7 @@ interface ChatProps {
  * Main chat interface component
  * Handles message state, persistence, streaming, and user interactions
  */
-export function Chat({ packedContext, packHash, isContextLoading = false, geminiApiKey }: ChatProps) {
+export function Chat({ packedContext, packHash, geminiApiKey }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -34,10 +33,8 @@ export function Chat({ packedContext, packHash, isContextLoading = false, gemini
 
   // Load conversation from IndexedDB on mount
   useEffect(() => {
-    if (!packHash) return
-
     async function loadConvo() {
-      const saved = await loadConversation(packHash!)
+      const saved = await loadConversation(packHash)
       if (saved && saved.length > 0) {
         setMessages(saved)
       }
@@ -47,9 +44,9 @@ export function Chat({ packedContext, packHash, isContextLoading = false, gemini
 
   // Save conversation to IndexedDB whenever messages change
   useEffect(() => {
-    if (!packHash || !packedContext || messages.length === 0) return
-
-    saveConversation(packHash, messages, packedContext.length)
+    if (messages.length > 0) {
+      saveConversation(packHash, messages, packedContext.length)
+    }
   }, [messages, packHash, packedContext])
 
   // Auto-scroll to bottom when messages change (but only if user hasn't manually scrolled)
@@ -99,7 +96,7 @@ export function Chat({ packedContext, packHash, isContextLoading = false, gemini
 
   // Stream a message from Gemini
   const sendMessage = async (content: string, messageIndex?: number) => {
-    if (!content.trim() || streaming || !packedContext) return
+    if (!content.trim() || streaming) return
 
     // Cancel any existing stream
     if (abortControllerRef.current) {
@@ -276,21 +273,17 @@ export function Chat({ packedContext, packHash, isContextLoading = false, gemini
       )
     ) {
       setMessages([])
-      if (packHash) {
-        await deleteConversation(packHash)
-      }
+      await deleteConversation(packHash)
     }
   }
 
   const handleExportToAI = async (platform: string, url: string) => {
-    if (!packedContext) return
     await navigator.clipboard.writeText(packedContext)
     setShowExportMenu(false)
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   const handleDownloadTxt = () => {
-    if (!packedContext) return
     const blob = new Blob([packedContext], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -315,8 +308,7 @@ export function Chat({ packedContext, packHash, isContextLoading = false, gemini
   }
 
   return (
-    <div className="mb-8 flex flex-col" style={{minHeight: 'calc(100vh - 12rem)'}}>
-
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Header with Clear button only */}
       {messages.length > 0 && (
         <div className="flex items-center justify-end mb-4">
@@ -454,14 +446,14 @@ export function Chat({ packedContext, packHash, isContextLoading = false, gemini
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={isContextLoading ? "Packing context..." : !packedContext ? "Select and pack repos first" : "Message Gemini"}
+          placeholder="Message Gemini"
           className="w-full rounded-xl border border-neutral-800 bg-neutral-900 pl-12 pr-12 py-3 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none overflow-hidden"
           rows={1}
-          disabled={streaming || !packedContext}
+          disabled={streaming}
         />
         <button
           onClick={() => sendMessage(input)}
-          disabled={streaming || !input.trim() || !packedContext}
+          disabled={streaming || !input.trim()}
           className="absolute top-1/2 -translate-y-1/2 right-3 p-2 rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer"
         >
           {streaming ? (
