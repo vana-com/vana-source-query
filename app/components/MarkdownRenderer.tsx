@@ -133,7 +133,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
 
           // Paragraphs: Moderate spacing, not blog-generous
           p: ({ node, ...props }) => (
-            <p className="mb-3 last:mb-0 leading-normal [li>&]:mb-0 break-words" {...props} />
+            <p className="mb-3 last:mb-0 leading-normal [li>&]:mb-0" {...props} />
           ),
 
           // Lists: TIGHT spacing like ChatGPT/Claude

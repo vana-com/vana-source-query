@@ -376,7 +376,7 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
       )}
 
       {/* Messages - Flex-grow and scroll */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto mb-4 pt-4">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden mb-4 pt-4">
         {messages.length === 0 ? (
           <div className="h-full flex items-center justify-center text-muted-foreground">
             <div className="text-center max-w-md">

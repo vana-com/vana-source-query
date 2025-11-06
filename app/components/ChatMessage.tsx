@@ -59,7 +59,7 @@ export function ChatMessage({
   if (message.role === 'user') {
     return (
       <div className="mb-6 flex justify-end">
-        <div className="flex items-start gap-3 max-w-[80%]">
+        <div className="flex items-start gap-3 max-w-[90%] sm:max-w-[700px]">
           <div className="flex-1 min-w-0">
             {isEditing ? (
               <div>
@@ -115,7 +115,7 @@ export function ChatMessage({
   // Model message
   return (
     <div className="mb-6">
-      <div className="flex items-start gap-3 max-w-[90%]">
+      <div className="flex items-start gap-3 max-w-[95%] sm:max-w-[800px]">
         <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-muted-foreground text-sm font-semibold">
           G
         </div>
