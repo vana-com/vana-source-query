@@ -4,11 +4,24 @@
  */
 
 import { openDB, type IDBPDatabase } from 'idb'
-import { createHash } from 'crypto'
 import type { CachedPack, CacheLookupResult, CacheStats, SliceConfig } from './types'
 import { CACHE_CONFIG } from './config'
 
 let dbInstance: IDBPDatabase | null = null
+
+/**
+ * FNV-1a hash function (browser-safe, deterministic)
+ * Used for config hashing in cache keys
+ */
+function fnv1aHash(str: string): string {
+  let hash = 2166136261 // FNV offset basis (32-bit)
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i)
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24)
+  }
+  // Convert to unsigned 32-bit, then to base36 for compact string
+  return (hash >>> 0).toString(36)
+}
 
 /**
  * Initialize IndexedDB for pack caching
@@ -49,7 +62,7 @@ export function buildCacheKey(
 
 /**
  * Hash slice config for cache key
- * Uses SHA-256 for collision resistance
+ * Uses FNV-1a hash (deterministic, browser-safe)
  */
 export function hashSliceConfig(config: SliceConfig): string {
   // Normalize config for deterministic hashing
@@ -68,7 +81,7 @@ export function hashSliceConfig(config: SliceConfig): string {
   }
 
   const json = JSON.stringify(normalized)
-  return createHash('sha256').update(json).digest('hex').slice(0, 12)
+  return fnv1aHash(json)
 }
 
 /**
