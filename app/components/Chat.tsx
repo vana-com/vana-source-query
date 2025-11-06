@@ -276,17 +276,18 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
     }
   }
 
-  const handleCopy = (messageIndex: number) => {
+  const handleCopy = async (messageIndex: number) => {
     const message = messages[messageIndex]
-    const previousMessage = messageIndex > 0 ? messages[messageIndex - 1] : undefined
 
-    // Format as Q&A if there's a previous user message
-    let textToCopy = message.content
-    if (previousMessage && previousMessage.role === 'user') {
-      textToCopy = `**Q:** ${previousMessage.content}\n\n**A:** ${message.content}`
+    // Only copy the current message content, not previous messages
+    const textToCopy = message.content
+
+    try {
+      await navigator.clipboard.writeText(textToCopy)
+      console.log('[Chat] Copied message:', textToCopy.substring(0, 100) + '...')
+    } catch (err) {
+      console.error('[Chat] Failed to copy:', err)
     }
-
-    navigator.clipboard.writeText(textToCopy)
   }
 
   const handleClear = async () => {

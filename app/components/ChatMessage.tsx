@@ -134,7 +134,7 @@ export function ChatMessage({
             </div>
           ) : (
             <div className="overflow-hidden">
-              <MarkdownRenderer content={message.content} />
+              <MarkdownRenderer content={message.content} isStreaming={isStreaming && isLastMessage} />
 
             {isStreaming && isLastMessage && (
               <div className="mt-2 flex items-center gap-2 text-xs text-neutral-500">
