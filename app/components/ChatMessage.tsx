@@ -59,7 +59,7 @@ export function ChatMessage({
                 <textarea
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
-                  className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
                   rows={3}
                   autoFocus
                 />
@@ -74,13 +74,13 @@ export function ChatMessage({
               </div>
             ) : (
               <div className="text-right">
-                <div className="inline-block text-left bg-brand-600/20 rounded-2xl px-4 py-2.5 text-sm text-neutral-200 whitespace-pre-wrap">
+                <div className="inline-block text-left bg-brand-600/20 rounded-2xl px-4 py-2.5 text-sm text-foreground whitespace-pre-wrap">
                   {message.content}
                 </div>
                 <div className="flex justify-end gap-3 mt-3">
                   <button
                     onClick={() => setIsEditing(true)}
-                    className="text-xs text-neutral-500 hover:text-neutral-300 transition flex items-center gap-1 cursor-pointer"
+                    className="text-xs text-muted-foreground hover:text-foreground transition flex items-center gap-1 cursor-pointer"
                     disabled={isStreaming}
                   >
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -109,17 +109,17 @@ export function ChatMessage({
   return (
     <div className="mb-6">
       <div className="flex items-start gap-3 max-w-[90%]">
-        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-neutral-400 text-sm font-semibold">
+        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-muted-foreground text-sm font-semibold">
           G
         </div>
         <div className="flex-1 min-w-0 overflow-hidden">
           {isEditing ? (
             <div>
-              <div className="text-xs text-neutral-400 mb-2">Edit the previous message and regenerate:</div>
+              <div className="text-xs text-muted-foreground mb-2">Edit the previous message and regenerate:</div>
               <textarea
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
-                className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
                 rows={3}
                 autoFocus
               />
@@ -137,7 +137,7 @@ export function ChatMessage({
               <MarkdownRenderer content={message.content} isStreaming={isStreaming && isLastMessage} />
 
             {isStreaming && isLastMessage && (
-              <div className="mt-2 flex items-center gap-2 text-xs text-neutral-500">
+              <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                 <div className="w-2 h-2 bg-brand-500 rounded-full animate-pulse" />
                 <span>streaming...</span>
               </div>
@@ -146,7 +146,7 @@ export function ChatMessage({
             <div className="flex gap-3 mt-3">
               <button
                 onClick={handleCopy}
-                className="text-xs text-neutral-500 hover:text-neutral-300 transition flex items-center gap-1 cursor-pointer"
+                className="text-xs text-muted-foreground hover:text-foreground transition flex items-center gap-1 cursor-pointer"
                 disabled={isStreaming}
               >
                 {copySuccess ? (
@@ -181,7 +181,7 @@ export function ChatMessage({
                     setEditContent(previousMessage.content)
                     setIsEditing(true)
                   }}
-                  className="text-xs text-neutral-500 hover:text-neutral-300 transition flex items-center gap-1 cursor-pointer"
+                  className="text-xs text-muted-foreground hover:text-foreground transition flex items-center gap-1 cursor-pointer"
                   disabled={isStreaming}
                 >
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -198,7 +198,7 @@ export function ChatMessage({
 
               <button
                 onClick={onRetry}
-                className="text-xs text-neutral-500 hover:text-neutral-300 transition flex items-center gap-1 cursor-pointer"
+                className="text-xs text-muted-foreground hover:text-foreground transition flex items-center gap-1 cursor-pointer"
                 disabled={isStreaming}
               >
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">

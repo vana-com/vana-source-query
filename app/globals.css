@@ -1,28 +1,41 @@
 @import 'tailwindcss';
-@import 'highlight.js/styles/github-dark.css';
+
+/* Enable class-based dark mode */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
+  /* Brand colors (same in both themes) */
   --color-brand-500: #7C5CFC;
   --color-brand-600: #6B46FF;
   --color-brand-700: #5A37F2;
 
-  --color-neutral-50: #fafafa;
-  --color-neutral-100: #f5f5f5;
-  --color-neutral-200: #e5e5e5;
-  --color-neutral-300: #d4d4d4;
-  --color-neutral-400: #a3a3a3;
-  --color-neutral-500: #737373;
-  --color-neutral-600: #525252;
-  --color-neutral-700: #404040;
-  --color-neutral-800: #262626;
-  --color-neutral-850: #1f1f1f;
-  --color-neutral-900: #171717;
-  --color-neutral-950: #0b0b0b;
-
+  /* Status colors (same in both themes) */
   --color-ok: #22c55e;
   --color-warn: #f59e0b;
   --color-danger: #ef4444;
 
+  /* Semantic theme tokens - Light mode defaults */
+  --color-background: #ffffff;
+  --color-foreground: #0a0a0a;
+  --color-card: #fafafa;
+  --color-card-foreground: #0a0a0a;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #0a0a0a;
+  --color-primary: #6B46FF;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f3f4f6;
+  --color-secondary-foreground: #0a0a0a;
+  --color-muted: #f3f4f6;
+  --color-muted-foreground: #6b7280;
+  --color-accent: #e5e7eb;
+  --color-accent-foreground: #0a0a0a;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
+  --color-border: #d1d5db;
+  --color-input: #e5e7eb;
+  --color-ring: #7C5CFC;
+
+  /* Font sizes */
   --font-size-xs: 11px;
   --font-size-sm: 13px;
   --font-size-base: 14px;
@@ -30,18 +43,39 @@
   --font-size-xl: 20px;
   --font-size-2xl: 24px;
 
+  /* Border radius */
   --radius-xl: 16px;
   --radius-2xl: 24px;
 }
 
-:root {
-  --background: #0b0b0b;
-  --foreground: #fafafa;
+/* Dark mode overrides */
+@layer theme {
+  .dark {
+    --color-background: #0b0b0b;
+    --color-foreground: #fafafa;
+    --color-card: #171717;
+    --color-card-foreground: #fafafa;
+    --color-popover: #171717;
+    --color-popover-foreground: #fafafa;
+    --color-primary: #6B46FF;
+    --color-primary-foreground: #ffffff;
+    --color-secondary: #262626;
+    --color-secondary-foreground: #fafafa;
+    --color-muted: #262626;
+    --color-muted-foreground: #a3a3a3;
+    --color-accent: #262626;
+    --color-accent-foreground: #fafafa;
+    --color-destructive: #ef4444;
+    --color-destructive-foreground: #ffffff;
+    --color-border: #262626;
+    --color-input: #262626;
+    --color-ring: #7C5CFC;
+  }
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
+  color: var(--color-foreground);
+  background: var(--color-background);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
 
@@ -74,38 +108,38 @@ body {
 @layer components {
   /* Buttons */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950 disabled:opacity-50 disabled:cursor-not-allowed bg-brand-600 text-white hover:bg-brand-500;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed bg-primary text-primary-foreground hover:bg-brand-500;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950 disabled:opacity-50 disabled:cursor-not-allowed bg-neutral-900 border border-neutral-800 text-neutral-200 hover:bg-neutral-850 cursor-pointer;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed bg-secondary border border-border text-secondary-foreground hover:bg-secondary/80 cursor-pointer;
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950 disabled:opacity-50 disabled:cursor-not-allowed text-neutral-300 hover:bg-neutral-900;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed text-foreground hover:bg-accent hover:text-accent-foreground;
   }
 
   /* Inputs */
   .input {
-    @apply w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500;
+    @apply w-full rounded-xl border border-input bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground transition focus:border-ring focus:ring-1 focus:ring-ring;
   }
 
   /* Cards */
   .card {
-    @apply rounded-2xl border border-neutral-800 bg-neutral-950 shadow-sm;
+    @apply rounded-2xl border border-border bg-card shadow-sm;
   }
 
   /* Typography */
   .eyebrow {
-    @apply text-[11px] uppercase tracking-wider text-neutral-400 font-medium;
+    @apply text-[11px] uppercase tracking-wider text-muted-foreground font-medium;
   }
 
   .section-title {
-    @apply text-xl font-semibold tracking-tight text-neutral-100;
+    @apply text-xl font-semibold tracking-tight text-foreground;
   }
 }
 

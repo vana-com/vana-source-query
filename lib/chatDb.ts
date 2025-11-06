@@ -121,6 +121,7 @@ export async function updateConversation(
     await db.put(STORE_NAME, updated)
   } catch (error) {
     console.error('[chatDb] Failed to update conversation:', error)
+    throw error
   }
 }
 

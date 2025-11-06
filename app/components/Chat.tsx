@@ -290,18 +290,6 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
     }
   }
 
-  const handleClear = async () => {
-    if (!conversationId) return
-
-    if (
-      window.confirm(
-        'Clear this conversation? This action cannot be undone.'
-      )
-    ) {
-      setMessages([])
-      await deleteConversation(conversationId)
-    }
-  }
 
   const formatFullExport = () => {
     let export_text = `# Packed Repository Context\n\n${packedContext}\n\n`
@@ -357,15 +345,6 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* Header with Clear button only */}
-      {messages.length > 0 && (
-        <div className="flex items-center justify-end mb-4">
-          <button onClick={handleClear} className="text-xs text-neutral-500 hover:text-neutral-300 transition cursor-pointer">
-            Clear conversation
-          </button>
-        </div>
-      )}
-
       {/* Error banner */}
       {error && (
         <div className="mb-4 p-3 bg-danger/10 border border-danger/30 rounded-lg flex items-start gap-2">
@@ -397,12 +376,12 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
       )}
 
       {/* Messages - Flex-grow and scroll */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto mb-4">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto mb-4 pt-4">
         {messages.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-neutral-500">
+          <div className="h-full flex items-center justify-center text-muted-foreground">
             <div className="text-center max-w-md">
               <svg
-                className="w-12 h-12 mx-auto mb-3 text-neutral-700"
+                className="w-12 h-12 mx-auto mb-3 text-border"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -442,41 +421,41 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
       </div>
 
       {/* Input - Sticky at bottom */}
-      <div className="flex-shrink-0 relative bg-neutral-950 pt-3 border-t border-neutral-800">
+      <div className="flex-shrink-0 relative bg-background pt-3 border-t border-border">
         {/* Export Dropdown Menu */}
         {showExportMenu && (
           <div
             ref={exportMenuRef}
-            className="absolute left-2 bottom-full mb-2 bg-neutral-900 border border-neutral-800 rounded-xl shadow-lg py-2 min-w-[200px] z-50"
+            className="absolute left-2 bottom-full mb-2 bg-card border border-border rounded-xl shadow-lg py-2 min-w-[200px] z-50"
           >
             <button
               onClick={() => handleExportToAI('AI Studio', 'https://aistudio.google.com/prompts/new_chat?model=gemini-2.5-pro')}
-              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer"
+              className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-secondary transition cursor-pointer"
             >
               Copy for AI Studio
             </button>
             <button
               onClick={() => handleExportToAI('Gemini', 'https://gemini.google.com/app')}
-              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer"
+              className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-secondary transition cursor-pointer"
             >
               Copy for Gemini
             </button>
             <button
               onClick={() => handleExportToAI('Claude', 'https://claude.ai/new')}
-              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer"
+              className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-secondary transition cursor-pointer"
             >
               Copy for Claude
             </button>
             <button
               onClick={() => handleExportToAI('ChatGPT', 'https://chatgpt.com')}
-              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer"
+              className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-secondary transition cursor-pointer"
             >
               Copy for ChatGPT
             </button>
-            <div className="border-t border-neutral-800 my-1" />
+            <div className="border-t border-border my-1" />
             <button
               onClick={handleDownloadTxt}
-              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer flex items-center gap-2"
+              className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-secondary transition cursor-pointer flex items-center gap-2"
             >
               <span>💾</span> Download .txt
             </button>
@@ -486,7 +465,7 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
         {/* Export Button */}
         <button
           onClick={() => setShowExportMenu(!showExportMenu)}
-          className="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-neutral-400 hover:text-neutral-200 transition cursor-pointer"
+          className="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition cursor-pointer"
           title="Export options"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -500,7 +479,7 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Message Gemini"
-          className="w-full rounded-xl border border-neutral-800 bg-neutral-900 pl-12 pr-12 py-3 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none overflow-hidden"
+          className="w-full rounded-xl border border-border bg-card pl-12 pr-12 py-3 text-sm text-foreground placeholder-muted-foreground transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none overflow-hidden"
           rows={1}
           disabled={streaming}
         />

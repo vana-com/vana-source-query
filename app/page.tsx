@@ -14,6 +14,7 @@ import { loadCache, saveCache } from "@/lib/cache";
 import { Spinner } from "@/app/components/Spinner";
 import { assemblePackedContext } from "@/lib/assembly";
 import { Chat } from "@/app/components/Chat";
+import { ThemeToggle } from "@/app/components/ThemeToggle";
 import {
   listConversations,
   createConversation,
@@ -771,16 +772,25 @@ export default function Home() {
       return;
     }
 
-    try {
-      await updateConversation(activeConversationId, { name: autoName });
-      setConversations(
-        conversations.map((c) =>
-          c.id === activeConversationId ? { ...c, name: autoName } : c
-        )
-      );
-    } catch (error) {
-      console.error("Failed to auto-name conversation:", error);
-    }
+    // CRITICAL: Delay to avoid race condition with message auto-save
+    // Chat component auto-saves messages immediately when they change (Chat.tsx:60-65)
+    // If we update name simultaneously, one overwrites the other
+    // Wait 100ms for message save to complete, then update name
+    const conversationId = activeConversationId; // Capture for closure
+    setTimeout(async () => {
+      try {
+        await updateConversation(conversationId, { name: autoName });
+
+        // Update React state with latest conversations
+        setConversations((prevConvos) =>
+          prevConvos.map((c) =>
+            c.id === conversationId ? { ...c, name: autoName } : c
+          )
+        );
+      } catch (error) {
+        console.error("Failed to auto-name conversation:", error);
+      }
+    }, 100);
   };
 
   // Load cache stats on mount
@@ -828,12 +838,12 @@ export default function Home() {
 
   // Render
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100">
+    <main className="min-h-screen bg-background text-foreground">
       {/* Mobile Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 bg-neutral-950 border-b border-neutral-800 z-40 flex items-center gap-3 p-4">
+      <div className="lg:hidden fixed top-0 left-0 right-0 bg-background border-b border-border z-40 flex items-center gap-3 p-4">
         <button
           onClick={() => setSidebarOpen(true)}
-          className="p-2 -ml-2 text-neutral-400 hover:text-neutral-200 transition"
+          className="p-2 -ml-2 text-muted-foreground hover:text-foreground transition"
           aria-label="Open menu"
         >
           <svg
@@ -871,8 +881,8 @@ export default function Home() {
             fixed lg:relative
             inset-y-0 left-0
             w-[320px] lg:w-[400px]
-            bg-neutral-950
-            border-r border-neutral-800
+            bg-background
+            border-r border-border
             lg:sticky lg:top-0 lg:h-screen
             overflow-y-auto
             transition-transform duration-300
@@ -885,11 +895,11 @@ export default function Home() {
           `}
           >
             {/* Compact Header + Token Meter */}
-            <div className="flex-shrink-0 p-4 border-b border-neutral-800">
+            <div className="flex-shrink-0 p-4 border-b border-border">
               {/* Close button (mobile only) */}
               <button
                 onClick={() => setSidebarOpen(false)}
-                className="lg:hidden absolute top-4 right-4 p-1 text-neutral-400 hover:text-neutral-200 transition"
+                className="lg:hidden absolute top-4 right-4 p-1 text-muted-foreground hover:text-foreground transition"
                 aria-label="Close menu"
               >
                 <svg
@@ -919,9 +929,6 @@ export default function Home() {
                   <h1 className="text-base font-bold truncate">
                     Vana Source Query
                   </h1>
-                  <p className="text-[10px] text-neutral-500">
-                    Load → Select → Pack → Copy
-                  </p>
                 </div>
               </div>
 
@@ -929,11 +936,11 @@ export default function Home() {
               {(loading || (packResult && tokenResult)) && (
                 <>
                   <div
-                    className="w-full h-1.5 bg-neutral-900 rounded-full overflow-hidden mb-2"
+                    className="w-full h-1.5 bg-card rounded-full overflow-hidden mb-2"
                     role="progressbar"
                   >
                     {loading ? (
-                      <div className="h-full w-full bg-gradient-to-r from-neutral-800 via-neutral-700 to-neutral-800 bg-[length:200%_100%] animate-shimmer" />
+                      <div className="h-full w-full bg-gradient-to-r from-secondary via-accent to-secondary bg-[length:200%_100%] animate-shimmer" />
                     ) : (
                       <div
                         className={`h-full transition-all duration-500 ${
@@ -954,9 +961,9 @@ export default function Home() {
                       />
                     )}
                   </div>
-                  <div className="flex items-center justify-between text-[10px] text-neutral-500">
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                     {loading ? (
-                      <span className="text-neutral-400">
+                      <span className="text-muted-foreground">
                         Packing {selectedRepos.size}{" "}
                         {selectedRepos.size === 1
                           ? "repository"
@@ -972,7 +979,7 @@ export default function Home() {
                           )}{" "}
                           files •{" "}
                           {countingTokens ? (
-                            <span className="flex items-center gap-1 text-neutral-400">
+                            <span className="flex items-center gap-1 text-muted-foreground">
                               <Spinner size="sm" />
                               Counting...
                             </span>
@@ -1027,7 +1034,7 @@ export default function Home() {
             </div>
 
             {/* Conversations */}
-            <div className="flex-shrink-0 border-b border-neutral-800">
+            <div className="flex-shrink-0 border-b border-border">
               <div className="px-4 pt-4 pb-3">
                 {/* Header with inline New Chat button */}
                 <div className="flex items-center justify-between mb-3">
@@ -1051,10 +1058,10 @@ export default function Home() {
                     return (
                       <div
                         key={convo.id}
-                        className={`group relative border-b border-neutral-900 ${
+                        className={`group relative border-b border-border/50 ${
                           isActive
-                            ? "bg-neutral-800"
-                            : "hover:bg-neutral-900/30"
+                            ? "bg-secondary"
+                            : "hover:bg-card"
                         } transition`}
                       >
                         {isEditing ? (
@@ -1080,7 +1087,7 @@ export default function Home() {
                                 }
                               }}
                               autoFocus
-                              className="w-full rounded border border-brand-500 bg-neutral-900 px-2 py-1 text-sm text-neutral-100 focus:outline-none"
+                              className="w-full rounded border border-brand-500 bg-card px-2 py-1 text-sm text-foreground focus:outline-none"
                             />
                           </div>
                         ) : (
@@ -1099,8 +1106,8 @@ export default function Home() {
                             <span
                               className={`flex-1 text-sm truncate ${
                                 isActive
-                                  ? "text-neutral-100 font-medium"
-                                  : "text-neutral-300"
+                                  ? "text-foreground font-medium"
+                                  : "text-foreground"
                               }`}
                             >
                               {convo.name}
@@ -1114,7 +1121,7 @@ export default function Home() {
                                   setEditingConversationId(convo.id);
                                   setEditingName(convo.name);
                                 }}
-                                className="p-1 rounded hover:bg-neutral-700 transition text-neutral-400 hover:text-neutral-100"
+                                className="p-1 rounded hover:bg-accent transition text-muted-foreground hover:text-foreground"
                                 title="Rename"
                               >
                                 <svg
@@ -1136,7 +1143,7 @@ export default function Home() {
                                   e.stopPropagation();
                                   handleDeleteConversation(convo.id);
                                 }}
-                                className="p-1 rounded hover:bg-neutral-700 transition text-neutral-400 hover:text-red-400"
+                                className="p-1 rounded hover:bg-accent transition text-muted-foreground hover:text-red-400"
                                 title="Delete"
                               >
                                 <svg
@@ -1163,7 +1170,7 @@ export default function Home() {
                                   setEditingConversationId(convo.id);
                                   setEditingName(convo.name);
                                 }}
-                                className="p-1.5 rounded hover:bg-neutral-700 transition text-neutral-400"
+                                className="p-1.5 rounded hover:bg-accent transition text-muted-foreground"
                                 title="Rename"
                               >
                                 <svg
@@ -1185,7 +1192,7 @@ export default function Home() {
                                   e.stopPropagation();
                                   handleDeleteConversation(convo.id);
                                 }}
-                                className="p-1.5 rounded hover:bg-neutral-700 transition text-neutral-400"
+                                className="p-1.5 rounded hover:bg-accent transition text-muted-foreground"
                                 title="Delete"
                               >
                                 <svg
@@ -1210,7 +1217,7 @@ export default function Home() {
                   })}
                 </div>
               ) : (
-                <div className="px-4 py-8 text-center text-sm text-neutral-500">
+                <div className="px-4 py-8 text-center text-sm text-muted-foreground">
                   No conversations yet
                 </div>
               )}
@@ -1218,13 +1225,13 @@ export default function Home() {
 
             {/* Repositories Section */}
             {loading && repos.length === 0 ? (
-              <div className="text-center py-12 text-neutral-400">
+              <div className="text-center py-12 text-muted-foreground">
                 Loading repositories...
               </div>
             ) : error && repos.length === 0 ? (
               <div className="text-center py-8 px-4">
                 <svg
-                  className="w-10 h-10 text-neutral-600 mx-auto mb-3"
+                  className="w-10 h-10 text-muted-foreground mx-auto mb-3"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -1236,7 +1243,7 @@ export default function Home() {
                     d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
                   />
                 </svg>
-                <p className="text-sm text-neutral-400 mb-3">{error}</p>
+                <p className="text-sm text-muted-foreground mb-3">{error}</p>
                 <button
                   onClick={handleLoadRepos}
                   className="btn-secondary text-xs"
@@ -1245,7 +1252,7 @@ export default function Home() {
                 </button>
               </div>
             ) : repos.length > 0 ? (
-              <div className="border-b border-neutral-800">
+              <div className="border-b border-border">
                 <div className="px-4 pt-4 pb-3">
                     <div className="relative mb-3">
                       <input
@@ -1255,7 +1262,7 @@ export default function Home() {
                         placeholder="Search repositories..."
                         className="input pr-24"
                       />
-                      <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-xs text-neutral-500">
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-xs text-muted-foreground">
                         {filteredRepos.length}{" "}
                         {filteredRepos.length === 1 ? "repo" : "repos"}
                       </div>
@@ -1267,7 +1274,7 @@ export default function Home() {
                         </span>
                         <button
                           onClick={() => setSelectedRepos(new Set())}
-                          className="text-neutral-500 hover:text-neutral-300 underline cursor-pointer"
+                          className="text-muted-foreground hover:text-foreground underline cursor-pointer"
                         >
                           clear
                         </button>
@@ -1284,12 +1291,12 @@ export default function Home() {
                         !repos.some(
                           (r) => r.fullName === validatedExternalRepo.fullName
                         ))) && (
-                      <div className="mb-4 p-3 border border-neutral-800 rounded-lg bg-neutral-900/30">
-                        <div className="text-xs text-neutral-400 mb-2">
+                      <div className="mb-4 p-3 border border-border rounded-lg bg-card">
+                        <div className="text-xs text-muted-foreground mb-2">
                           External Repository
                         </div>
                         {externalRepoValidating ? (
-                          <div className="flex items-center gap-2 text-sm text-neutral-300">
+                          <div className="flex items-center gap-2 text-sm text-foreground">
                             <Spinner />
                             <span>Validating {externalRepoInput}...</span>
                           </div>
@@ -1337,7 +1344,7 @@ export default function Home() {
                               }
                               setSelectedRepos(newSet);
                             }}
-                            className="w-full text-left p-2 rounded hover:bg-neutral-800/50 transition"
+                            className="w-full text-left p-2 rounded hover:bg-secondary transition"
                           >
                             <div className="flex items-center gap-3">
                               {/* Checkmark */}
@@ -1364,7 +1371,7 @@ export default function Home() {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-sm font-medium text-neutral-100">
+                                  <span className="text-sm font-medium text-foreground">
                                     {validatedExternalRepo.name}
                                   </span>
                                   {(() => {
@@ -1379,7 +1386,7 @@ export default function Home() {
                                       </span>
                                     );
                                   })()}
-                                  <span className="text-xs text-neutral-500 flex-shrink-0">
+                                  <span className="text-xs text-muted-foreground flex-shrink-0">
                                     {
                                       validatedExternalRepo.fullName.split(
                                         "/"
@@ -1393,11 +1400,11 @@ export default function Home() {
                                   </span>
                                 </div>
                                 {validatedExternalRepo.description && (
-                                  <div className="mt-0.5 text-xs text-neutral-400 truncate">
+                                  <div className="mt-0.5 text-xs text-muted-foreground truncate">
                                     {validatedExternalRepo.description}
                                   </div>
                                 )}
-                                <div className="mt-0.5 text-xs text-neutral-500 truncate">
+                                <div className="mt-0.5 text-xs text-muted-foreground truncate">
                                   Updated{" "}
                                   {formatRelativeTime(
                                     validatedExternalRepo.pushedAt
@@ -1411,7 +1418,7 @@ export default function Home() {
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
-                                className="flex-shrink-0 p-2 rounded hover:bg-neutral-800 transition text-neutral-400 hover:text-neutral-100"
+                                className="flex-shrink-0 p-2 rounded hover:bg-secondary transition text-muted-foreground hover:text-foreground"
                                 title="Open in GitHub"
                               >
                                 <svg
@@ -1431,7 +1438,7 @@ export default function Home() {
 
                   {/* Repo List - Scrollable */}
                   {filteredRepos.length > 0 ? (
-                    <div className="border-t border-neutral-900 max-h-[25vh] overflow-y-auto">
+                    <div className="border-t border-border/50 max-h-[25vh] overflow-y-auto">
                       {filteredRepos.map((repo) => {
                         const isSelected = selectedRepos.has(repo.fullName);
                         return (
@@ -1447,7 +1454,7 @@ export default function Home() {
                               setSelectedRepos(newSet);
                             }}
                             aria-selected={isSelected}
-                            className="group w-full text-left px-3 py-3 border-b border-neutral-900 transition focus-ring hover:bg-neutral-900/30"
+                            className="group w-full text-left px-3 py-3 border-b border-border/50 transition focus-ring hover:bg-card"
                           >
                             <div className="flex items-center gap-3">
                               {/* Checkmark - only visible when selected */}
@@ -1472,7 +1479,7 @@ export default function Home() {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-sm font-medium truncate text-neutral-100">
+                                  <span className="text-sm font-medium truncate text-foreground">
                                     {repo.name}
                                   </span>
                                   {(() => {
@@ -1487,16 +1494,16 @@ export default function Home() {
                                       </span>
                                     );
                                   })()}
-                                  <span className="text-xs text-neutral-500 flex-shrink-0">
+                                  <span className="text-xs text-muted-foreground flex-shrink-0">
                                     {repo.fullName.split("/")[0]}
                                   </span>
                                 </div>
                                 {repo.description && (
-                                  <div className="mt-0.5 text-xs text-neutral-400 truncate">
+                                  <div className="mt-0.5 text-xs text-muted-foreground truncate">
                                     {repo.description}
                                   </div>
                                 )}
-                                <div className="mt-0.5 text-xs text-neutral-500 truncate">
+                                <div className="mt-0.5 text-xs text-muted-foreground truncate">
                                   Updated {formatRelativeTime(repo.pushedAt)}
                                 </div>
                                 {/* Branch input for selected repos */}
@@ -1505,7 +1512,7 @@ export default function Home() {
                                     className="mt-2 flex items-center gap-2"
                                     onClick={(e) => e.stopPropagation()}
                                   >
-                                    <span className="text-[10px] text-neutral-500">
+                                    <span className="text-[10px] text-muted-foreground">
                                       Branch:
                                     </span>
                                     <input
@@ -1522,7 +1529,7 @@ export default function Home() {
                                       }}
                                       onBlur={handleTextBlur}
                                       placeholder={repo.defaultBranch}
-                                      className="flex-1 px-2 py-0.5 text-xs rounded border border-neutral-700 bg-neutral-800 text-neutral-200 placeholder-neutral-500 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                                      className="flex-1 px-2 py-0.5 text-xs rounded border border-border bg-secondary text-foreground placeholder-muted-foreground focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
                                     />
                                   </div>
                                 )}
@@ -1534,7 +1541,7 @@ export default function Home() {
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
-                                className="flex-shrink-0 p-2 rounded hover:bg-neutral-800 transition text-neutral-400 hover:text-neutral-100"
+                                className="flex-shrink-0 p-2 rounded hover:bg-secondary transition text-muted-foreground hover:text-foreground"
                                 title="Open in GitHub"
                               >
                                 <svg
@@ -1555,7 +1562,7 @@ export default function Home() {
 
                 {/* No results message */}
                 {filteredRepos.length === 0 && (
-                  <div className="text-center py-12 text-neutral-500">
+                  <div className="text-center py-12 text-muted-foreground">
                     <div className="text-sm">No repositories found</div>
                     <div className="text-xs mt-1">
                       Try a different search term
@@ -1569,13 +1576,13 @@ export default function Home() {
             <div className="px-4 pt-4 pb-6 space-y-4">
                 {/* Model Selection */}
                 <div>
-                  <label className="block text-xs font-medium mb-1.5 text-neutral-200">
+                  <label className="block text-xs font-medium mb-1.5 text-foreground">
                     Model
                   </label>
                   <select
                     value={geminiModel}
                     onChange={(e) => setGeminiModel(e.target.value)}
-                    className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 cursor-pointer"
+                    className="w-full rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-foreground focus:border-brand-500 focus:ring-1 focus:ring-brand-500 cursor-pointer"
                   >
                     {availableModels.length > 0 ? (
                       availableModels.map((model) => (
@@ -1601,10 +1608,10 @@ export default function Home() {
 
                   return selectedModel?.supportsThinking ? (
                     <div>
-                      <label className="block text-xs font-medium mb-1.5 text-neutral-200">
+                      <label className="block text-xs font-medium mb-1.5 text-foreground">
                         Thinking Mode
                         <span
-                          className="text-neutral-600 ml-1"
+                          className="text-muted-foreground ml-1"
                           title="Controls reasoning depth: Auto adapts to complexity, Maximum for deep analysis, Off for speed"
                         >
                           ⓘ
@@ -1615,7 +1622,7 @@ export default function Home() {
                         onChange={(e) =>
                           setThinkingBudget(Number(e.target.value))
                         }
-                        className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 cursor-pointer"
+                        className="w-full rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-foreground focus:border-brand-500 focus:ring-1 focus:ring-brand-500 cursor-pointer"
                       >
                         <option value={-1}>Auto (dynamic)</option>
                         <option value={maxBudget}>Maximum ({maxLabel})</option>
@@ -1627,7 +1634,7 @@ export default function Home() {
 
                 {/* Include globs */}
                 <div>
-                  <label className="block text-xs font-medium mb-1.5 text-neutral-200">
+                  <label className="block text-xs font-medium mb-1.5 text-foreground">
                     Include globs
                   </label>
                   <input
@@ -1638,14 +1645,14 @@ export default function Home() {
                     placeholder="**/*.ts, src/**"
                     className="input text-xs"
                   />
-                  <p className="mt-1 text-xs text-neutral-500">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     Comma-separated. Leave empty for all.
                   </p>
                 </div>
 
                 {/* Ignore globs */}
                 <div>
-                  <label className="block text-xs font-medium mb-1.5 text-neutral-200">
+                  <label className="block text-xs font-medium mb-1.5 text-foreground">
                     Ignore globs
                   </label>
                   <input
@@ -1656,7 +1663,7 @@ export default function Home() {
                     placeholder="**/*.test.ts, **/dist/**"
                     className="input text-xs"
                   />
-                  <p className="mt-1 text-xs text-neutral-500">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     Comma-separated patterns.
                   </p>
                 </div>
@@ -1670,7 +1677,7 @@ export default function Home() {
                       onChange={(e) => setRespectGitignore(e.target.checked)}
                       className="peer sr-only"
                     />
-                    <div className="w-3.5 h-3.5 rounded border border-neutral-700 bg-neutral-900 peer-checked:bg-brand-600 peer-checked:border-brand-600 transition flex items-center justify-center">
+                    <div className="w-3.5 h-3.5 rounded border border-border bg-card peer-checked:bg-brand-600 peer-checked:border-brand-600 transition flex items-center justify-center">
                       {respectGitignore && (
                         <svg
                           className="w-2.5 h-2.5 text-white"
@@ -1689,7 +1696,7 @@ export default function Home() {
                     </div>
                   </div>
                   <div className="flex-1">
-                    <div className="text-xs font-medium text-neutral-200">
+                    <div className="text-xs font-medium text-foreground">
                       Respect .gitignore
                     </div>
                   </div>
@@ -1704,7 +1711,7 @@ export default function Home() {
                       onChange={(e) => setRespectAiIgnore(e.target.checked)}
                       className="peer sr-only"
                     />
-                    <div className="w-3.5 h-3.5 rounded border border-neutral-700 bg-neutral-900 peer-checked:bg-brand-600 peer-checked:border-brand-600 transition flex items-center justify-center">
+                    <div className="w-3.5 h-3.5 rounded border border-border bg-card peer-checked:bg-brand-600 peer-checked:border-brand-600 transition flex items-center justify-center">
                       {respectAiIgnore && (
                         <svg
                           className="w-2.5 h-2.5 text-white"
@@ -1723,7 +1730,7 @@ export default function Home() {
                     </div>
                   </div>
                   <div className="flex-1">
-                    <div className="text-xs font-medium text-neutral-200">
+                    <div className="text-xs font-medium text-foreground">
                       Respect AI ignore files
                     </div>
                   </div>
@@ -1738,7 +1745,7 @@ export default function Home() {
                       onChange={(e) => setUseDefaultPatterns(e.target.checked)}
                       className="peer sr-only"
                     />
-                    <div className="w-3.5 h-3.5 rounded border border-neutral-700 bg-neutral-900 peer-checked:bg-brand-600 peer-checked:border-brand-600 transition flex items-center justify-center">
+                    <div className="w-3.5 h-3.5 rounded border border-border bg-card peer-checked:bg-brand-600 peer-checked:border-brand-600 transition flex items-center justify-center">
                       {useDefaultPatterns && (
                         <svg
                           className="w-2.5 h-2.5 text-white"
@@ -1757,7 +1764,7 @@ export default function Home() {
                     </div>
                   </div>
                   <div className="flex-1">
-                    <div className="text-xs font-medium text-neutral-200">
+                    <div className="text-xs font-medium text-foreground">
                       Use default ignore patterns
                     </div>
                   </div>
@@ -1767,7 +1774,7 @@ export default function Home() {
               {/* Directory Structure */}
               {packResult && (
                 <div className="px-4 mt-6">
-                  <h3 className="text-sm font-semibold mb-4 text-neutral-100">
+                  <h3 className="text-sm font-semibold mb-4 text-foreground">
                     Directory Structures
                   </h3>
                   <div className="space-y-2">
@@ -1783,9 +1790,9 @@ export default function Home() {
                       return (
                         <details key={idx} className="group">
                           <summary className="cursor-pointer list-none">
-                            <div className="flex items-center gap-2 p-2 hover:bg-neutral-900 rounded-lg transition text-xs">
+                            <div className="flex items-center gap-2 p-2 hover:bg-card rounded-lg transition text-xs">
                               <svg
-                                className="w-3 h-3 text-neutral-500 transition-transform group-open:rotate-90 flex-shrink-0"
+                                className="w-3 h-3 text-muted-foreground transition-transform group-open:rotate-90 flex-shrink-0"
                                 fill="none"
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
@@ -1797,16 +1804,16 @@ export default function Home() {
                                   d="M9 5l7 7-7 7"
                                 />
                               </svg>
-                              <span className="font-mono font-medium text-neutral-200 truncate">
+                              <span className="font-mono font-medium text-foreground truncate">
                                 {repo.repo.split("/")[1] || repo.repo}
                               </span>
-                              <span className="text-neutral-600 ml-auto flex-shrink-0">
+                              <span className="text-muted-foreground ml-auto flex-shrink-0">
                                 {repo.stats.fileCount}
                               </span>
                             </div>
                           </summary>
                           <div className="mt-1 ml-5">
-                            <pre className="text-[10px] leading-tight overflow-x-auto p-2 bg-neutral-950 rounded border border-neutral-800 font-mono whitespace-pre text-neutral-400 max-h-60 overflow-y-auto">
+                            <pre className="text-[10px] leading-tight overflow-x-auto p-2 bg-background rounded border border-border font-mono whitespace-pre text-muted-foreground max-h-60 overflow-y-auto">
                               {structureMatch[1].trim()}
                             </pre>
                           </div>
@@ -1816,6 +1823,11 @@ export default function Home() {
                   </div>
                 </div>
               )}
+
+              {/* Theme Toggle - Bottom of sidebar */}
+              <div className="mt-auto px-4 pb-4 pt-2 flex justify-center">
+                <ThemeToggle />
+              </div>
           </aside>
 
           {/* Right Pane: Controls & Results */}

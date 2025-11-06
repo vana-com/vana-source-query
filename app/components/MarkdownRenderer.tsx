@@ -31,13 +31,13 @@ function CodeBlock({
   return (
     <div className="relative group">
       {/* Language label and copy button */}
-      <div className="flex items-center justify-between px-4 py-2 bg-neutral-900 border border-neutral-800 border-b-0 rounded-t-lg">
-        <span className="text-xs text-neutral-500 font-mono">
+      <div className="flex items-center justify-between px-4 py-2 bg-card border border-border border-b-0 rounded-t-lg">
+        <span className="text-xs text-muted-foreground font-mono">
           {language || 'text'}
         </span>
         <button
           onClick={handleCopy}
-          className="text-xs text-neutral-400 hover:text-neutral-200 transition flex items-center gap-1.5 cursor-pointer"
+          className="text-xs text-muted-foreground hover:text-foreground transition flex items-center gap-1.5 cursor-pointer"
         >
           {copied ? (
             <>
@@ -66,7 +66,7 @@ function CodeBlock({
         </button>
       </div>
       {/* Code content - render highlighted children directly */}
-      <pre className="!mt-0 bg-neutral-900 border border-neutral-800 rounded-b-lg p-4 overflow-x-auto">
+      <pre className="!mt-0 bg-card border border-border rounded-b-lg p-4 overflow-x-auto">
         {children}
       </pre>
     </div>
@@ -115,20 +115,20 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   const processedContent = isStreaming ? parseIncompleteMarkdown(content) : content
 
   return (
-    <div className="text-neutral-200 text-sm leading-relaxed">
+    <div className="text-foreground text-sm leading-relaxed">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex, rehypeHighlight]}
         components={{
           // Headings: Clear hierarchy without dominating
           h1: ({ node, ...props }) => (
-            <h1 className="text-lg font-semibold text-neutral-100 mt-4 mb-2 first:mt-0" {...props} />
+            <h1 className="text-lg font-semibold text-foreground mt-4 mb-2 first:mt-0" {...props} />
           ),
           h2: ({ node, ...props }) => (
-            <h2 className="text-base font-semibold text-neutral-100 mt-3 mb-2 first:mt-0" {...props} />
+            <h2 className="text-base font-semibold text-foreground mt-3 mb-2 first:mt-0" {...props} />
           ),
           h3: ({ node, ...props }) => (
-            <h3 className="text-sm font-semibold text-neutral-100 mt-3 mb-1.5 first:mt-0" {...props} />
+            <h3 className="text-sm font-semibold text-foreground mt-3 mb-1.5 first:mt-0" {...props} />
           ),
 
           // Paragraphs: Moderate spacing, not blog-generous
@@ -169,7 +169,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
                 <input
                   type="checkbox"
                   disabled
-                  className="mt-1 rounded border-neutral-700 bg-neutral-800 text-brand-500 focus:ring-0 cursor-not-allowed"
+                  className="mt-1 rounded border-border bg-secondary text-brand-500 focus:ring-0 cursor-not-allowed"
                   {...props}
                 />
               )
@@ -200,7 +200,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           code: ({ node, className, children, ...props }) => {
             const isInline = !className
             return isInline ? (
-              <code className="bg-neutral-800/60 text-neutral-100 px-1 py-0.5 rounded text-xs font-mono" {...props}>
+              <code className="bg-secondary/60 text-foreground px-1 py-0.5 rounded text-xs font-mono" {...props}>
                 {children}
               </code>
             ) : (
@@ -221,7 +221,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
 
           // Blockquotes: Subtle but clear
           blockquote: ({ node, ...props }) => (
-            <blockquote className="border-l-3 border-neutral-700 pl-3 my-2 text-neutral-400 italic" {...props} />
+            <blockquote className="border-l-3 border-border pl-3 my-2 text-muted-foreground italic" {...props} />
           ),
 
           // Tables: GFM support
@@ -231,25 +231,25 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
             </div>
           ),
           th: ({ node, ...props }) => (
-            <th className="border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-left font-semibold" {...props} />
+            <th className="border border-border bg-card px-3 py-1.5 text-left font-semibold" {...props} />
           ),
           td: ({ node, ...props }) => (
-            <td className="border border-neutral-700 px-3 py-1.5" {...props} />
+            <td className="border border-border px-3 py-1.5" {...props} />
           ),
 
           // Horizontal rule
           hr: ({ node, ...props }) => (
-            <hr className="border-neutral-800 my-4" {...props} />
+            <hr className="border-border my-4" {...props} />
           ),
 
           // Strong/Bold: Proper weight
           strong: ({ node, ...props }) => (
-            <strong className="font-semibold text-neutral-100" {...props} />
+            <strong className="font-semibold text-foreground" {...props} />
           ),
 
           // Emphasis/Italic
           em: ({ node, ...props }) => (
-            <em className="italic text-neutral-300" {...props} />
+            <em className="italic text-foreground" {...props} />
           ),
         }}
       >
