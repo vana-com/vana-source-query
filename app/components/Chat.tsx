@@ -263,7 +263,24 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
   }
 
   const handleEdit = (messageIndex: number, newContent: string) => {
-    sendMessage(newContent, messageIndex)
+    const message = messages[messageIndex]
+
+    if (message.role === 'user') {
+      // User message: replace and regenerate response
+      sendMessage(newContent, messageIndex)
+    } else {
+      // AI message: update in place without triggering API call
+      // This allows editing AI responses to correct mistakes in history
+      const updatedMessages = messages.map((msg, idx) =>
+        idx === messageIndex ? { ...msg, content: newContent } : msg
+      )
+      setMessages(updatedMessages)
+
+      // Persist to IndexedDB
+      if (conversationId) {
+        saveMessages(conversationId, updatedMessages)
+      }
+    }
   }
 
   const handleRetry = (messageIndex: number) => {

@@ -122,11 +122,6 @@ export function ChatMessage({
         <div className="flex-1 min-w-0 overflow-hidden">
           {isEditing ? (
             <div>
-              <div className="text-xs text-muted-foreground mb-2">
-                {previousMessage && previousMessage.role === 'user' && editContent === previousMessage.content
-                  ? 'Edit the previous message and regenerate:'
-                  : 'Edit this message:'}
-              </div>
               <textarea
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
@@ -136,9 +131,7 @@ export function ChatMessage({
               />
               <div className="flex gap-2 mt-2">
                 <button onClick={handleSaveEdit} className="btn-primary text-xs cursor-pointer">
-                  {previousMessage && previousMessage.role === 'user' && editContent === previousMessage.content
-                    ? 'Save & Regenerate'
-                    : 'Save'}
+                  Save
                 </button>
                 <button onClick={handleCancelEdit} className="btn-secondary text-xs cursor-pointer">
                   Cancel
