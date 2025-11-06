@@ -110,7 +110,6 @@ export interface AppConfig {
   }
   gemini: {
     defaultModel: string
-    models: Record<string, { limit: number; name: string }>
   }
 }
 

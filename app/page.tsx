@@ -778,9 +778,8 @@ export default function Home() {
                             </>
                           )}
                         </span>
-                        <span title={config.gemini.models[config.gemini.defaultModel]?.name || "Gemini 2.5 Flash"}>
-                          {config.gemini.models[config.gemini.defaultModel]
-                            ?.name || "Gemini 2.5 Flash"}
+                        <span>
+                          {availableModels.find(m => m.name === geminiModel)?.displayName || geminiModel}
                         </span>
                       </>
                     )}

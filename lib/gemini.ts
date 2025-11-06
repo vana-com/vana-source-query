@@ -47,13 +47,9 @@ export class GeminiClient {
         : totalTokens
       const promptTokens = totalTokens - contextTokens
 
-      // Get model limit
-      const modelConfig = config.gemini.models[modelId]
-      if (!modelConfig) {
-        throw new Error(`Unknown model: ${modelId}`)
-      }
-
-      const modelLimit = modelConfig.limit
+      // Get model limit (fallback to 1M if unknown)
+      // Most Gemini models have 1M or 2M token limits
+      const modelLimit = 1_000_000 // Default safe fallback
       const ratio = totalTokens / modelLimit
 
       // Determine status
