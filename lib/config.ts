@@ -32,3 +32,28 @@ export const config: AppConfig = {
     },
   },
 }
+
+/**
+ * Cache Configuration
+ * Controls packed repo caching behavior
+ */
+export const CACHE_CONFIG = {
+  // Storage limits
+  maxTotalSize: 100 * 1024 * 1024, // 100MB total cache
+  maxEntrySize: 10 * 1024 * 1024, // 10MB per repo
+
+  // Staleness thresholds
+  warnIfCommitsBehind: 5, // Show warning if >5 commits behind
+  warnIfDaysOld: 7, // Show warning if >7 days old
+
+  // Auto-refresh
+  autoRefreshIfMinutesBehind: 5, // Auto re-pack if packed <5min ago but new commits
+
+  // Housekeeping
+  purgeIfNotAccessedDays: 30, // Auto-purge if not accessed in 30 days
+
+  // IndexedDB
+  dbName: 'vana-pack-cache',
+  dbVersion: 1,
+  storeName: 'packs',
+}

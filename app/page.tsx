@@ -68,6 +68,9 @@ export default function Home() {
   // Track all added external repos persistently (fullName -> GitHubRepo)
   const [addedExternalRepos, setAddedExternalRepos] = useState<Map<string, GitHubRepo>>(new Map());
 
+  // Pack cache status
+  const [packCacheStatus, setPackCacheStatus] = useState<'fresh' | 'miss' | null>(null);
+
   // Load from cache on mount (client-side only to avoid hydration mismatch)
   useEffect(() => {
     const cache = loadCache();
@@ -295,6 +298,7 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setTokenResult(null);
+    setPackCacheStatus(null);
     // Keep existing packResult during re-pack to avoid UI flash
 
     try {
@@ -317,25 +321,51 @@ export default function Home() {
         branch: repoBranches[fullName], // optional branch override
       }));
 
-      const res = await fetch("/api/pack", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        signal: abortController.signal,
-        body: JSON.stringify({
-          repos: repoSelections,
-          sliceConfig,
-        }),
-      });
+      // Step 1: Fetch current SHAs for all repos (~200ms)
+      const { fetchRepoSHAs, checkPackCache, storePackResult } = await import('@/lib/packCacheClient');
+      const currentSHAs = await fetchRepoSHAs(repoSelections, undefined); // Uses default GitHub token
 
-      const json = await res.json();
+      // Step 2: Check cache with SHAs (~10ms)
+      const cacheCheck = await checkPackCache(repoSelections, sliceConfig, currentSHAs);
 
-      if (!json.success) {
-        throw new Error(json.error);
+      // Step 3: Use cache if all-fresh, otherwise pack
+      let result: PackResult;
+
+      if (cacheCheck.cacheStatus === 'all-fresh' && cacheCheck.result) {
+        // Cache hit! Return instantly (<200ms total)
+        console.log('✅ Cache hit: all repos fresh');
+        result = cacheCheck.result;
+        setPackCacheStatus('fresh');
+      } else {
+        // Cache miss or stale - pack via API (~20s)
+        console.log(`🔄 Cache ${cacheCheck.cacheStatus}: packing via API`);
+        setPackCacheStatus('miss');
+
+        const res = await fetch("/api/pack", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          signal: abortController.signal,
+          body: JSON.stringify({
+            repos: repoSelections,
+            sliceConfig,
+          }),
+        });
+
+        const json = await res.json();
+
+        if (!json.success) {
+          throw new Error(json.error);
+        }
+
+        result = json.data;
+
+        // Store result in cache for next time
+        await storePackResult(repoSelections, sliceConfig, result, currentSHAs);
       }
 
-      setPackResult(json.data);
+      setPackResult(result);
 
       // Generate pack hash for chat persistence
       const hash = generatePackHash(repoSelections, sliceConfig);
@@ -343,7 +373,7 @@ export default function Home() {
 
       // Auto-count tokens with Gemini (will update the estimate)
       if (!abortController.signal.aborted) {
-        await handleCountTokens(json.data, abortController.signal);
+        await handleCountTokens(result, abortController.signal);
       }
     } catch (err) {
       // Ignore abort errors
@@ -475,6 +505,43 @@ export default function Home() {
     }
   };
 
+  // Cache management
+  const [cacheStats, setCacheStats] = useState<{ entryCount: number; totalSizeMB: number } | null>(null);
+
+  const handleClearCache = async () => {
+    if (!confirm('Clear all cached packed repos? This cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const { clearPackCache } = await import('@/lib/packCacheClient');
+      await clearPackCache();
+      setCacheStats(null);
+      alert('Cache cleared successfully');
+    } catch (error) {
+      console.error('Failed to clear cache:', error);
+      alert('Failed to clear cache');
+    }
+  };
+
+  // Load cache stats on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    (async () => {
+      try {
+        const { getPackCacheStats } = await import('@/lib/packCacheClient');
+        const stats = await getPackCacheStats();
+        setCacheStats({
+          entryCount: stats.entryCount,
+          totalSizeMB: stats.totalSizeMB,
+        });
+      } catch (error) {
+        console.error('Failed to load cache stats:', error);
+      }
+    })();
+  }, [packResult]); // Refresh after packing
+
   // Merge org repos with external repos (deduplicate by fullName), filter, and sort by last updated
   const allRepos = [
     ...repos,
@@ -525,58 +592,71 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Token Meter (when available) */}
-              {packResult && tokenResult && (
+              {/* Token Meter / Loading State */}
+              {(loading || (packResult && tokenResult)) && (
                 <>
                   <div
                     className="w-full h-1.5 bg-neutral-900 rounded-full overflow-hidden mb-2"
                     role="progressbar"
-                    aria-valuenow={tokenResult.totalTokens}
-                    aria-valuemin={0}
-                    aria-valuemax={tokenResult.modelLimit}
-                    aria-label={`${tokenResult.totalTokens.toLocaleString()} of ${tokenResult.modelLimit.toLocaleString()} tokens used`}
                   >
-                    <div
-                      className={`h-full transition-all duration-500 ${
-                        tokenResult.status === "over"
-                          ? "bg-danger"
-                          : tokenResult.status === "near"
-                          ? "bg-warn"
-                          : "bg-ok"
-                      }`}
-                      style={{
-                        width: `${Math.min(
-                          (tokenResult.totalTokens / tokenResult.modelLimit) *
-                            100,
-                          100
-                        )}%`,
-                      }}
-                    />
+                    {loading ? (
+                      <div className="h-full w-full bg-gradient-to-r from-neutral-800 via-neutral-700 to-neutral-800 bg-[length:200%_100%] animate-shimmer" />
+                    ) : (
+                      <div
+                        className={`h-full transition-all duration-500 ${
+                          tokenResult!.status === "over"
+                            ? "bg-danger"
+                            : tokenResult!.status === "near"
+                            ? "bg-warn"
+                            : "bg-ok"
+                        }`}
+                        style={{
+                          width: `${Math.min(
+                            (tokenResult!.totalTokens / tokenResult!.modelLimit) *
+                              100,
+                            100
+                          )}%`,
+                        }}
+                      />
+                    )}
                   </div>
                   <div className="flex items-center justify-between text-[10px] text-neutral-500">
-                    <span className="flex items-center gap-1.5">
-                      {packResult.repos.reduce(
-                        (sum, r) => sum + r.stats.fileCount,
-                        0
-                      )}{" "}
-                      files •{" "}
-                      {countingTokens ? (
-                        <span className="flex items-center gap-1 text-neutral-400">
-                          <Spinner size="sm" />
-                          Counting...
+                    {loading ? (
+                      <span className="text-neutral-400">
+                        Packing {selectedRepos.size}{" "}
+                        {selectedRepos.size === 1 ? "repository" : "repositories"}...
+                      </span>
+                    ) : (
+                      <>
+                        <span className="flex items-center gap-1.5">
+                          {packResult!.repos.reduce(
+                            (sum, r) => sum + r.stats.fileCount,
+                            0
+                          )}{" "}
+                          files
+                          {packCacheStatus === 'fresh' && (
+                            <span className="text-ok" title="Loaded from cache (instant)">● cached</span>
+                          )}
+                          {" "}•{" "}
+                          {countingTokens ? (
+                            <span className="flex items-center gap-1 text-neutral-400">
+                              <Spinner size="sm" />
+                              Counting...
+                            </span>
+                          ) : (
+                            <>
+                              {tokenResult!.totalTokens.toLocaleString()} /{" "}
+                              {(tokenResult!.modelLimit / 1000000).toFixed(1)}M
+                              tokens
+                            </>
+                          )}
                         </span>
-                      ) : (
-                        <>
-                          {tokenResult.totalTokens.toLocaleString()} /{" "}
-                          {(tokenResult.modelLimit / 1000000).toFixed(1)}M
-                          tokens
-                        </>
-                      )}
-                    </span>
-                    <span title={config.gemini.models[config.gemini.defaultModel]?.name || "Gemini 2.5 Flash"}>
-                      {config.gemini.models[config.gemini.defaultModel]
-                        ?.name || "Gemini 2.5 Flash"}
-                    </span>
+                        <span title={config.gemini.models[config.gemini.defaultModel]?.name || "Gemini 2.5 Flash"}>
+                          {config.gemini.models[config.gemini.defaultModel]
+                            ?.name || "Gemini 2.5 Flash"}
+                        </span>
+                      </>
+                    )}
                   </div>
 
                   {tokenCountError && (
@@ -615,16 +695,6 @@ export default function Home() {
 
             {/* Repositories Section - Scrollable */}
             <div className="flex-shrink-0 p-6 border-b border-neutral-800">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold text-neutral-100">
-                  Repositories
-                </h2>
-                {repos.length > 0 && (
-                  <span className="text-xs text-neutral-500">
-                    {filteredRepos.length} {filteredRepos.length !== repos.length && `of ${repos.length}`}
-                  </span>
-                )}
-              </div>
 
             {loading && repos.length === 0 ? (
               <div className="text-center py-12 text-neutral-400">
@@ -892,12 +962,9 @@ export default function Home() {
             </div>
 
             {/* Settings Section - Always Visible */}
-            <div className="flex-1 overflow-y-auto p-6">
-            {/* Advanced Filters */}
-            <div className="mb-8">
-              <h3 className="text-sm font-semibold mb-4 text-neutral-100">
-                Advanced Filters
-              </h3>
+            <div className="flex-1 overflow-y-auto p-6 flex flex-col">
+            {/* Filters */}
+            <div>
               <div className="space-y-4">
                 {/* Include globs */}
                 <div>
@@ -1100,6 +1167,25 @@ export default function Home() {
                 </div>
               </div>
             )}
+
+            {/* Cache Management */}
+            {cacheStats && cacheStats.entryCount > 0 && (
+              <div className="mt-6 pt-6 border-t border-neutral-800">
+                <h3 className="text-sm font-semibold mb-2 text-neutral-100">
+                  Pack Cache
+                </h3>
+                <div className="text-[11px] text-neutral-500 space-y-1 mb-3">
+                  <div>{cacheStats.entryCount} {cacheStats.entryCount === 1 ? 'repo' : 'repos'} cached</div>
+                  <div>{cacheStats.totalSizeMB.toFixed(1)} MB used</div>
+                </div>
+                <button
+                  onClick={handleClearCache}
+                  className="text-[11px] text-neutral-400 hover:text-neutral-200 underline"
+                >
+                  Clear cache
+                </button>
+              </div>
+            )}
             </div>
           </aside>
 
@@ -1142,69 +1228,6 @@ export default function Home() {
                     packedContext={getCompleteContext()}
                     packHash={packHash}
                   />
-                )}
-
-                {/* Export Actions */}
-                {packResult && (
-                  <div className="mb-6">
-                    <p className="text-xs text-neutral-500 mb-2">
-                      Copy to external AI:
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() =>
-                          handleOpenInAI(
-                            "AI Studio",
-                            "https://aistudio.google.com/prompts/new_chat?model=gemini-2.5-pro"
-                          )
-                        }
-                        className="btn-secondary text-xs cursor-pointer"
-                        disabled={tokenResult?.status === "over"}
-                      >
-                        AI Studio
-                      </button>
-                      <button
-                        onClick={() =>
-                          handleOpenInAI(
-                            "Gemini",
-                            "https://gemini.google.com/app"
-                          )
-                        }
-                        className="btn-secondary text-xs cursor-pointer"
-                      >
-                        Gemini
-                      </button>
-                      <button
-                        onClick={() =>
-                          handleOpenInAI("Claude", "https://claude.ai/new")
-                        }
-                        className="btn-secondary text-xs cursor-pointer"
-                        disabled={!!(tokenResult && tokenResult.totalTokens > 200000)}
-                        title={
-                          tokenResult && tokenResult.totalTokens > 200000
-                            ? `Claude limit: 200K tokens (current: ${tokenResult.totalTokens.toLocaleString()})`
-                            : undefined
-                        }
-                      >
-                        Claude
-                      </button>
-                      <button onClick={handleDownload} className="btn-secondary text-xs cursor-pointer">
-                        Download .txt
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Loading state */}
-                {loading && (
-                  <div className="flex items-center justify-center gap-3 py-12">
-                    <Spinner size="lg" />
-                    <span className="text-sm text-neutral-300">
-                      Packing {selectedRepos.size}{" "}
-                      {selectedRepos.size === 1 ? "repository" : "repositories"}
-                      ...
-                    </span>
-                  </div>
                 )}
 
                 {packResult && (

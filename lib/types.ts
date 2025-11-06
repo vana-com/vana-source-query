@@ -115,6 +115,57 @@ export interface AppConfig {
 }
 
 // ============================================================================
+// Cache Types
+// ============================================================================
+
+export interface CachedPack {
+  // Cache key components
+  repoFullName: string
+  branch: string
+  commitSHA: string
+  sliceConfigHash: string
+
+  // Cached output
+  packedOutput: string
+
+  // Metadata
+  stats: {
+    fileCount: number
+    approxChars: number
+    approxTokens: number // Repomix estimate
+  }
+  geminiTokens?: number // Authoritative count (if available)
+
+  // Housekeeping
+  cachedAt: number // Unix timestamp
+  lastAccessedAt: number // For LRU purging
+  sizeBytes: number // For storage monitoring
+}
+
+export interface CacheLookupResult {
+  status: 'fresh' | 'stale' | 'miss'
+  cached?: CachedPack
+  currentSHA?: string
+  commitsBehind?: number
+  daysBehind?: number
+}
+
+export interface CacheStats {
+  entryCount: number
+  totalSizeBytes: number
+  totalSizeMB: number
+  entries: Array<{
+    repoFullName: string
+    branch: string
+    commitSHA: string
+    cachedAt: number
+    sizeBytes: number
+    isCurrent: boolean
+    commitsBehind?: number
+  }>
+}
+
+// ============================================================================
 // Chat Types
 // ============================================================================
 

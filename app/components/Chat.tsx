@@ -21,6 +21,7 @@ export function Chat({ packedContext, packHash, geminiApiKey }: ChatProps) {
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isVisible, setIsVisible] = useState(true) // Auto-open by default
+  const [showExportMenu, setShowExportMenu] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -28,6 +29,7 @@ export function Chat({ packedContext, packHash, geminiApiKey }: ChatProps) {
   const userHasScrolledRef = useRef(false)
   const streamingMessageIdRef = useRef<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const exportMenuRef = useRef<HTMLDivElement>(null)
 
   // Load conversation from IndexedDB on mount
   useEffect(() => {
@@ -77,6 +79,20 @@ export function Chat({ packedContext, packHash, geminiApiKey }: ChatProps) {
       textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`
     }
   }, [input])
+
+  // Close export menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false)
+      }
+    }
+
+    if (showExportMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showExportMenu])
 
   // Stream a message from Gemini
   const sendMessage = async (content: string, messageIndex?: number) => {
@@ -261,6 +277,25 @@ export function Chat({ packedContext, packHash, geminiApiKey }: ChatProps) {
     }
   }
 
+  const handleExportToAI = async (platform: string, url: string) => {
+    await navigator.clipboard.writeText(packedContext)
+    setShowExportMenu(false)
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  const handleDownloadTxt = () => {
+    const blob = new Blob([packedContext], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `packed-repos-${Date.now()}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    setShowExportMenu(false)
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !streaming) {
       e.preventDefault()
@@ -355,20 +390,71 @@ export function Chat({ packedContext, packHash, geminiApiKey }: ChatProps) {
 
       {/* Input - Sticky at bottom */}
       <div className="flex-shrink-0 relative bg-neutral-950 pt-3 border-t border-neutral-800">
+        {/* Export Dropdown Menu */}
+        {showExportMenu && (
+          <div
+            ref={exportMenuRef}
+            className="absolute left-2 bottom-full mb-2 bg-neutral-900 border border-neutral-800 rounded-xl shadow-lg py-2 min-w-[200px] z-50"
+          >
+            <button
+              onClick={() => handleExportToAI('AI Studio', 'https://aistudio.google.com/prompts/new_chat?model=gemini-2.5-pro')}
+              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer flex items-center gap-2"
+            >
+              <span>✨</span> Copy for AI Studio
+            </button>
+            <button
+              onClick={() => handleExportToAI('Gemini', 'https://gemini.google.com/app')}
+              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer flex items-center gap-2"
+            >
+              <span>💎</span> Copy for Gemini
+            </button>
+            <button
+              onClick={() => handleExportToAI('Claude', 'https://claude.ai/new')}
+              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer flex items-center gap-2"
+            >
+              <span>🤖</span> Copy for Claude
+            </button>
+            <button
+              onClick={() => handleExportToAI('ChatGPT', 'https://chatgpt.com')}
+              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer flex items-center gap-2"
+            >
+              <span>🟢</span> Copy for ChatGPT
+            </button>
+            <div className="border-t border-neutral-800 my-1" />
+            <button
+              onClick={handleDownloadTxt}
+              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer flex items-center gap-2"
+            >
+              <span>💾</span> Download .txt
+            </button>
+          </div>
+        )}
+
+        {/* Plus Button */}
+        <button
+          onClick={() => setShowExportMenu(!showExportMenu)}
+          className="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-neutral-400 hover:text-neutral-200 transition cursor-pointer"
+          title="Export options"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+        </button>
+
         <textarea
           ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Message Gemini"
-          className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 pr-12 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none overflow-hidden"
+          className="w-full rounded-xl border border-neutral-800 bg-neutral-900 pl-12 pr-12 py-3 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none overflow-hidden"
           rows={1}
           disabled={streaming}
         />
         <button
           onClick={() => sendMessage(input)}
           disabled={streaming || !input.trim()}
-          className="absolute bottom-5 right-3 p-2 rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer"
+          className="absolute top-1/2 -translate-y-1/2 right-3 p-2 rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer"
         >
           {streaming ? (
             <svg

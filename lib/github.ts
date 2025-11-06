@@ -118,6 +118,57 @@ export class GitHubClient {
   }
 
   /**
+   * Fetch the current commit SHA for a branch
+   * Used for cache freshness validation
+   * @throws Error with clear message on failure
+   */
+  async fetchCurrentCommitSHA(fullName: string, branch: string): Promise<string> {
+    try {
+      const [owner, repo] = fullName.split('/')
+      if (!owner || !repo) {
+        throw new Error(`Invalid repo format: ${fullName}. Expected: owner/repo`)
+      }
+
+      const { data } = await this.octokit.rest.repos.getBranch({
+        owner,
+        repo,
+        branch,
+      })
+
+      return data.commit.sha
+    } catch (error) {
+      throw this.handleError(error, `Failed to fetch commit SHA for ${fullName}:${branch}`)
+    }
+  }
+
+  /**
+   * Count commits between two SHAs
+   * Used to show staleness ("3 commits behind")
+   * @throws Error with clear message on failure
+   */
+  async countCommitsBehind(fullName: string, oldSHA: string, newSHA: string): Promise<number> {
+    try {
+      const [owner, repo] = fullName.split('/')
+      if (!owner || !repo) {
+        throw new Error(`Invalid repo format: ${fullName}. Expected: owner/repo`)
+      }
+
+      // Use compare API to get commit count
+      const { data } = await this.octokit.rest.repos.compareCommitsWithBasehead({
+        owner,
+        repo,
+        basehead: `${oldSHA}...${newSHA}`,
+      })
+
+      return data.ahead_by
+    } catch (error) {
+      // If comparison fails, return undefined (can't determine)
+      console.warn(`Failed to compare commits for ${fullName}:`, error)
+      return 0
+    }
+  }
+
+  /**
    * Map GitHub API response to our GitHubRepo type
    */
   private mapRepo(data: any): GitHubRepo {
