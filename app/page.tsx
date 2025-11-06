@@ -50,7 +50,7 @@ export default function Home() {
   // Gemini settings
   const [availableModels, setAvailableModels] = useState<Array<{name: string, displayName: string}>>([]);
   const [geminiModel, setGeminiModel] = useState<string>(config.gemini.defaultModel);
-  const [thinkingBudget, setThinkingBudget] = useState<number>(32768); // Default to maximum for code analysis
+  const [thinkingBudget, setThinkingBudget] = useState<number>(-1); // Default to auto (dynamic)
 
   // Track last packed state to avoid unnecessary repacks
   const [lastPackedState, setLastPackedState] = useState<string | null>(null);
@@ -89,7 +89,7 @@ export default function Home() {
     setUseDefaultPatterns(cache.useDefaultPatterns);
     setUserPrompt(cache.userPrompt);
     setGeminiModel(cache.geminiModel ?? config.gemini.defaultModel);
-    setThinkingBudget(cache.thinkingBudget ?? 32768); // Default maximum
+    setThinkingBudget(cache.thinkingBudget ?? -1); // Default auto
     // Load external repos from cache
     if (cache.externalRepos && cache.externalRepos.length > 0) {
       const externalReposMap = new Map(
@@ -849,13 +849,14 @@ export default function Home() {
                 <div>
                   <label className="block text-xs text-neutral-400 mb-1">
                     Thinking Mode
-                    <span className="text-neutral-600 ml-1" title="Deep reasoning for complex code analysis">ⓘ</span>
+                    <span className="text-neutral-600 ml-1" title="Controls reasoning depth: Auto adapts to complexity, Maximum for deep analysis, Off for speed">ⓘ</span>
                   </label>
                   <select
                     value={thinkingBudget}
                     onChange={(e) => setThinkingBudget(Number(e.target.value))}
                     className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 cursor-pointer"
                   >
+                    <option value={-1}>Auto (dynamic)</option>
                     <option value={32768}>Maximum (32K)</option>
                     <option value={0}>Off (fastest)</option>
                   </select>
