@@ -31,6 +31,13 @@ export function ChatMessage({
   const [editContent, setEditContent] = useState(message.content)
   const [copySuccess, setCopySuccess] = useState(false)
 
+  // Calculate dynamic textarea rows based on content length
+  const calculateRows = (text: string): number => {
+    const lineCount = text.split('\n').length
+    const estimatedRows = Math.ceil(text.length / 80) // ~80 chars per row
+    return Math.max(3, Math.min(lineCount + 2, estimatedRows, 20)) // Min 3, max 20
+  }
+
   const handleSaveEdit = () => {
     if (editContent.trim()) {
       onEdit(editContent.trim())
@@ -60,7 +67,7 @@ export function ChatMessage({
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
                   className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                  rows={3}
+                  rows={calculateRows(editContent)}
                   autoFocus
                 />
                 <div className="flex gap-2 mt-2">
@@ -120,7 +127,7 @@ export function ChatMessage({
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
                 className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                rows={3}
+                rows={calculateRows(editContent)}
                 autoFocus
               />
               <div className="flex gap-2 mt-2">
