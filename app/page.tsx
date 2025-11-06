@@ -158,6 +158,45 @@ export default function Home() {
     useDefaultPatterns,
   ]);
 
+  // Generate pack hash for chat persistence (updates whenever config changes)
+  useEffect(() => {
+    if (selectedRepos.size === 0) {
+      setPackHash(null);
+      return;
+    }
+
+    // Build slice config from current state
+    const sliceConfig: SliceConfig = {
+      includeGlobs: includeGlobs ? includeGlobs.split(',').map(g => g.trim()).filter(Boolean) : undefined,
+      ignoreGlobs: ignoreGlobs ? ignoreGlobs.split(',').map(g => g.trim()).filter(Boolean) : undefined,
+      respectGitignore,
+      respectAiIgnore,
+      useDefaultPatterns,
+    };
+
+    // Build repo selections
+    const repoSelections = Array.from(selectedRepos).map(fullName => {
+      const repo = repos.find(r => r.fullName === fullName) || addedExternalRepos.get(fullName);
+      return {
+        fullName,
+        branch: repoBranches[fullName] || repo?.defaultBranch || 'main',
+      };
+    });
+
+    const hash = generatePackHash(repoSelections, sliceConfig);
+    setPackHash(hash);
+  }, [
+    selectedRepos,
+    repoBranches,
+    includeGlobs,
+    ignoreGlobs,
+    respectGitignore,
+    respectAiIgnore,
+    useDefaultPatterns,
+    repos,
+    addedExternalRepos,
+  ]);
+
   // Auto-repack when selections or checkboxes change (immediate, no debounce)
   useEffect(() => {
     // Skip during initial load - let the initial load useEffect handle it

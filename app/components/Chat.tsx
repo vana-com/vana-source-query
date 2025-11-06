@@ -352,7 +352,7 @@ export function Chat({ packedContext, packHash, geminiApiKey }: ChatProps) {
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto mb-4">
         {messages.length === 0 ? (
           <div className="h-full flex items-center justify-center text-neutral-500">
-            <div className="text-center">
+            <div className="text-center max-w-md">
               <svg
                 className="w-12 h-12 mx-auto mb-3 text-neutral-700"
                 fill="none"
@@ -366,7 +366,12 @@ export function Chat({ packedContext, packHash, geminiApiKey }: ChatProps) {
                   d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
                 />
               </svg>
-              <p className="text-sm">Ask questions about your packed repositories</p>
+              <p className="text-sm">
+                {packedContext
+                  ? "Ask questions about your packed repositories"
+                  : "Selected repositories will be packed automatically. Ask me anything while you wait!"
+                }
+              </p>
             </div>
           </div>
         ) : (
