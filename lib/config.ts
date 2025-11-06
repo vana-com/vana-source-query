@@ -40,6 +40,6 @@ export const CACHE_CONFIG = {
 
   // IndexedDB
   dbName: "vana-pack-cache",
-  dbVersion: 1,
+  dbVersion: 2, // Incremented to force schema recreation
   storeName: "packs",
 };

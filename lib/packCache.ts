@@ -198,6 +198,14 @@ export async function storeInCache(
     }
 
     await db.put(CACHE_CONFIG.storeName, entry)
+
+    // Verify the write succeeded
+    const verify = await db.get(CACHE_CONFIG.storeName, key)
+    if (!verify) {
+      console.error(`Cache write failed verification for ${repo}:${branch}`)
+      return
+    }
+
     console.log(`Cached pack for ${repo}:${branch} (${(sizeBytes / 1024).toFixed(1)}KB)`)
   } catch (error) {
     console.error('Failed to store in cache:', error)
