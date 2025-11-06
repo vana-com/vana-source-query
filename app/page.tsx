@@ -7,13 +7,20 @@ import {
   SliceConfig,
   PackResult,
   TokenCountResult,
+  Conversation,
 } from "@/lib/types";
 import { config } from "@/lib/config";
 import { loadCache, saveCache } from "@/lib/cache";
 import { Spinner } from "@/app/components/Spinner";
 import { assemblePackedContext } from "@/lib/assembly";
 import { Chat } from "@/app/components/Chat";
-import { generatePackHash } from "@/lib/packHash";
+import {
+  listConversations,
+  createConversation,
+  updateConversation,
+  deleteConversation,
+} from "@/lib/chatDb";
+import { getCachedRepoBranches } from "@/lib/packCache";
 
 export default function Home() {
   // State - initialize with defaults, load from cache after mount
@@ -21,6 +28,7 @@ export default function Home() {
     process.env.NEXT_PUBLIC_GITHUB_ORG || "vana-com"
   );
   const [repos, setRepos] = useState<GitHubRepo[]>([]);
+  const [cachedRepos, setCachedRepos] = useState<Map<string, boolean>>(new Map()); // Track which repo+branch combos have cache
   const [repoFilter, setRepoFilter] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [selectedRepos, setSelectedRepos] = useState<Set<string>>(new Set());
@@ -44,12 +52,30 @@ export default function Home() {
   const [userPrompt, setUserPrompt] = useState("");
   const [copiedMessage, setCopiedMessage] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
-  const [packHash, setPackHash] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Conversation management
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<
+    string | null
+  >(null);
+  const [editingConversationId, setEditingConversationId] = useState<
+    string | null
+  >(null);
+  const [editingName, setEditingName] = useState("");
+
   // Gemini settings
-  const [availableModels, setAvailableModels] = useState<Array<{name: string, displayName: string}>>([]);
-  const [geminiModel, setGeminiModel] = useState<string>(config.gemini.defaultModel);
+  const [availableModels, setAvailableModels] = useState<
+    Array<{
+      name: string;
+      displayName: string;
+      supportsThinking?: boolean;
+      maxThinkingBudget?: number;
+    }>
+  >([]);
+  const [geminiModel, setGeminiModel] = useState<string>(
+    config.gemini.defaultModel
+  );
   const [thinkingBudget, setThinkingBudget] = useState<number>(-1); // Default to auto (dynamic)
 
   // Track last packed state to avoid unnecessary repacks
@@ -67,15 +93,22 @@ export default function Home() {
 
   // External repo state
   const [externalRepoInput, setExternalRepoInput] = useState<string>("");
-  const [validatedExternalRepo, setValidatedExternalRepo] = useState<GitHubRepo | null>(null);
+  const [validatedExternalRepo, setValidatedExternalRepo] =
+    useState<GitHubRepo | null>(null);
   const [externalRepoValidating, setExternalRepoValidating] = useState(false);
-  const [externalRepoError, setExternalRepoError] = useState<string | null>(null);
+  const [externalRepoError, setExternalRepoError] = useState<string | null>(
+    null
+  );
   const externalRepoTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // Track all added external repos persistently (fullName -> GitHubRepo)
-  const [addedExternalRepos, setAddedExternalRepos] = useState<Map<string, GitHubRepo>>(new Map());
+  const [addedExternalRepos, setAddedExternalRepos] = useState<
+    Map<string, GitHubRepo>
+  >(new Map());
 
   // Pack cache status
-  const [packCacheStatus, setPackCacheStatus] = useState<'fresh' | 'miss' | null>(null);
+  const [packCacheStatus, setPackCacheStatus] = useState<
+    "fresh" | "miss" | null
+  >(null);
 
   // Load from cache on mount (client-side only to avoid hydration mismatch)
   useEffect(() => {
@@ -93,7 +126,7 @@ export default function Home() {
     // Load external repos from cache
     if (cache.externalRepos && cache.externalRepos.length > 0) {
       const externalReposMap = new Map(
-        cache.externalRepos.map(repo => [repo.fullName, repo])
+        cache.externalRepos.map((repo) => [repo.fullName, repo])
       );
       setAddedExternalRepos(externalReposMap);
     }
@@ -104,10 +137,10 @@ export default function Home() {
   useEffect(() => {
     async function fetchModels() {
       try {
-        const response = await fetch('/api/gemini/models', {
+        const response = await fetch("/api/gemini/models", {
           headers: {
             ...(process.env.NEXT_PUBLIC_GEMINI_API_KEY
-              ? { 'X-Gemini-Key': process.env.NEXT_PUBLIC_GEMINI_API_KEY }
+              ? { "X-Gemini-Key": process.env.NEXT_PUBLIC_GEMINI_API_KEY }
               : {}),
           },
         });
@@ -122,13 +155,67 @@ export default function Home() {
             }
           }
         } else {
-          console.warn('[models] Failed to fetch models, using config defaults');
+          console.warn(
+            "[models] Failed to fetch models, using config defaults"
+          );
         }
       } catch (error) {
-        console.error('[models] Error fetching models:', error);
+        console.error("[models] Error fetching models:", error);
       }
     }
     fetchModels();
+  }, []);
+
+  // Adjust thinking budget when switching models
+  useEffect(() => {
+    const selectedModel = availableModels.find((m) => m.name === geminiModel);
+
+    if (selectedModel) {
+      if (!selectedModel.supportsThinking && thinkingBudget !== 0) {
+        // Model doesn't support thinking at all
+        console.log(
+          "[page] Model",
+          geminiModel,
+          "does not support thinking, setting budget to 0"
+        );
+        setThinkingBudget(0);
+      } else if (
+        selectedModel.supportsThinking &&
+        selectedModel.maxThinkingBudget
+      ) {
+        // Model supports thinking but current budget exceeds the limit
+        if (thinkingBudget > selectedModel.maxThinkingBudget) {
+          console.log(
+            "[page] Model",
+            geminiModel,
+            "max budget is",
+            selectedModel.maxThinkingBudget,
+            "clamping from",
+            thinkingBudget
+          );
+          setThinkingBudget(selectedModel.maxThinkingBudget);
+        }
+      }
+    }
+  }, [geminiModel, availableModels, thinkingBudget]);
+
+  // Load conversations on mount and auto-create if none exist
+  useEffect(() => {
+    async function loadConvos() {
+      const convos = await listConversations();
+      setConversations(convos);
+
+      if (convos.length === 0) {
+        // No conversations - create default one
+        const newConvo = await createConversation("Chat 1");
+        setConversations([newConvo]);
+        setActiveConversationId(newConvo.id);
+      } else {
+        // Set most recent as active
+        setActiveConversationId(convos[0].id);
+      }
+    }
+    loadConvos();
   }, []);
 
   // Auto-load repos on mount
@@ -136,6 +223,21 @@ export default function Home() {
     handleLoadRepos().then(() => {
       setInitialLoadDone(true);
     });
+  }, []);
+
+  // Load cached repo+branch combinations on mount
+  useEffect(() => {
+    async function loadCachedRepoBranches() {
+      try {
+        const cached = await getCachedRepoBranches();
+        setCachedRepos(cached);
+        console.log("[page] Loaded", cached.size, "cached repo+branch combos");
+      } catch (error) {
+        console.error("[page] Failed to load cached repo branches:", error);
+        // Continue without cache indicators
+      }
+    }
+    loadCachedRepoBranches();
   }, []);
 
   // Auto-pack on initial load if there are cached selections
@@ -200,44 +302,8 @@ export default function Home() {
     useDefaultPatterns,
   ]);
 
-  // Generate pack hash for chat persistence (updates whenever config changes)
-  useEffect(() => {
-    if (selectedRepos.size === 0) {
-      setPackHash('default-conversation');
-      return;
-    }
-
-    // Build slice config from current state
-    const sliceConfig: SliceConfig = {
-      includeGlobs: includeGlobs ? includeGlobs.split(',').map(g => g.trim()).filter(Boolean) : undefined,
-      ignoreGlobs: ignoreGlobs ? ignoreGlobs.split(',').map(g => g.trim()).filter(Boolean) : undefined,
-      respectGitignore,
-      respectAiIgnore,
-      useDefaultPatterns,
-    };
-
-    // Build repo selections
-    const repoSelections = Array.from(selectedRepos).map(fullName => {
-      const repo = repos.find(r => r.fullName === fullName) || addedExternalRepos.get(fullName);
-      return {
-        fullName,
-        branch: repoBranches[fullName] || repo?.defaultBranch || 'main',
-      };
-    });
-
-    const hash = generatePackHash(repoSelections, sliceConfig);
-    setPackHash(hash);
-  }, [
-    selectedRepos,
-    repoBranches,
-    includeGlobs,
-    ignoreGlobs,
-    respectGitignore,
-    respectAiIgnore,
-    useDefaultPatterns,
-    repos,
-    addedExternalRepos,
-  ]);
+  // Conversations are now independent of repo selection
+  // No need to regenerate conversation ID when repos change
 
   // Auto-repack when selections or checkboxes change (immediate, no debounce)
   useEffect(() => {
@@ -254,7 +320,6 @@ export default function Home() {
       // Clear results if nothing selected
       setPackResult(null);
       setTokenResult(null);
-      setPackHash(null);
       setLastPackedState(null);
       setLoading(false);
       return;
@@ -284,7 +349,7 @@ export default function Home() {
     setExternalRepoError(null);
 
     // Check if search input contains a slash (external repo pattern)
-    if (!repoFilter.includes('/')) {
+    if (!repoFilter.includes("/")) {
       setExternalRepoInput("");
       return;
     }
@@ -294,7 +359,7 @@ export default function Home() {
     setExternalRepoInput(input);
 
     // Validate format (must be owner/repo)
-    const parts = input.split('/');
+    const parts = input.split("/");
     if (parts.length !== 2 || !parts[0] || !parts[1]) {
       setExternalRepoError("Use format: owner/repo");
       return;
@@ -304,7 +369,9 @@ export default function Home() {
     setExternalRepoValidating(true);
     externalRepoTimeoutRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/repos/validate?repo=${encodeURIComponent(input)}`);
+        const res = await fetch(
+          `/api/repos/validate?repo=${encodeURIComponent(input)}`
+        );
         const json = await res.json();
 
         if (json.success) {
@@ -404,24 +471,30 @@ export default function Home() {
       }));
 
       // Step 1: Fetch current SHAs for all repos (~200ms)
-      const { fetchRepoSHAs, checkPackCache, storePackResult } = await import('@/lib/packCacheClient');
+      const { fetchRepoSHAs, checkPackCache, storePackResult } = await import(
+        "@/lib/packCacheClient"
+      );
       const currentSHAs = await fetchRepoSHAs(repoSelections, undefined); // Uses default GitHub token
 
       // Step 2: Check cache with SHAs (~10ms)
-      const cacheCheck = await checkPackCache(repoSelections, sliceConfig, currentSHAs);
+      const cacheCheck = await checkPackCache(
+        repoSelections,
+        sliceConfig,
+        currentSHAs
+      );
 
       // Step 3: Use cache if all-fresh, otherwise pack
       let result: PackResult;
 
-      if (cacheCheck.cacheStatus === 'all-fresh' && cacheCheck.result) {
+      if (cacheCheck.cacheStatus === "all-fresh" && cacheCheck.result) {
         // Cache hit! Return instantly (<200ms total)
-        console.log('✅ Cache hit: all repos fresh');
+        console.log("✅ Cache hit: all repos fresh");
         result = cacheCheck.result;
-        setPackCacheStatus('fresh');
+        setPackCacheStatus("fresh");
       } else {
         // Cache miss or stale - pack via API (~20s)
         console.log(`🔄 Cache ${cacheCheck.cacheStatus}: packing via API`);
-        setPackCacheStatus('miss');
+        setPackCacheStatus("miss");
 
         const res = await fetch("/api/pack", {
           method: "POST",
@@ -445,13 +518,13 @@ export default function Home() {
 
         // Store result in cache for next time
         await storePackResult(repoSelections, sliceConfig, result, currentSHAs);
+
+        // Refresh cached repos list after successful pack
+        const updatedCached = await getCachedRepoBranches();
+        setCachedRepos(updatedCached);
       }
 
       setPackResult(result);
-
-      // Generate pack hash for chat persistence
-      const hash = generatePackHash(repoSelections, sliceConfig);
-      setPackHash(hash);
 
       // Auto-count tokens with Gemini (will update the estimate)
       if (!abortController.signal.aborted) {
@@ -488,7 +561,7 @@ export default function Home() {
       // Assemble context on-demand with current prompt
       // This allows prompt changes to trigger re-counting without re-packing!
       const contextText = assemblePackedContext(
-        result.repos.filter(r => !r.error),
+        result.repos.filter((r) => !r.error),
         userPrompt
       );
 
@@ -535,7 +608,7 @@ export default function Home() {
     // Assemble context from packed repos with current prompt
     // This allows prompt to be changed without re-packing!
     return assemblePackedContext(
-      packResult.repos.filter(r => !r.error),
+      packResult.repos.filter((r) => !r.error),
       userPrompt
     );
   };
@@ -588,38 +661,142 @@ export default function Home() {
   };
 
   // Cache management
-  const [cacheStats, setCacheStats] = useState<{ entryCount: number; totalSizeMB: number } | null>(null);
+  const [cacheStats, setCacheStats] = useState<{
+    entryCount: number;
+    totalSizeMB: number;
+  } | null>(null);
 
   const handleClearCache = async () => {
-    if (!confirm('Clear all cached packed repos? This cannot be undone.')) {
+    if (!confirm("Clear all cached packed repos? This cannot be undone.")) {
       return;
     }
 
     try {
-      const { clearPackCache } = await import('@/lib/packCacheClient');
+      const { clearPackCache } = await import("@/lib/packCacheClient");
       await clearPackCache();
       setCacheStats(null);
-      alert('Cache cleared successfully');
+      alert("Cache cleared successfully");
     } catch (error) {
-      console.error('Failed to clear cache:', error);
-      alert('Failed to clear cache');
+      console.error("Failed to clear cache:", error);
+      alert("Failed to clear cache");
+    }
+  };
+
+  // Conversation management handlers
+  const handleNewConversation = async () => {
+    try {
+      const newConvo = await createConversation(
+        `Chat ${conversations.length + 1}`
+      );
+      setConversations([newConvo, ...conversations]);
+      setActiveConversationId(newConvo.id);
+    } catch (error) {
+      console.error("Failed to create conversation:", error);
+    }
+  };
+
+  const handleSwitchConversation = (conversationId: string) => {
+    setActiveConversationId(conversationId);
+  };
+
+  const handleRenameConversation = async (
+    conversationId: string,
+    newName: string
+  ) => {
+    if (!newName.trim()) return;
+
+    try {
+      await updateConversation(conversationId, { name: newName.trim() });
+      setConversations(
+        conversations.map((c) =>
+          c.id === conversationId ? { ...c, name: newName.trim() } : c
+        )
+      );
+    } catch (error) {
+      console.error("Failed to rename conversation:", error);
+    }
+  };
+
+  const handleDeleteConversation = async (conversationId: string) => {
+    if (conversations.length === 1) {
+      alert("Cannot delete the last conversation");
+      return;
+    }
+
+    if (!confirm("Delete this conversation? This cannot be undone.")) {
+      return;
+    }
+
+    try {
+      await deleteConversation(conversationId);
+      const remaining = conversations.filter((c) => c.id !== conversationId);
+      setConversations(remaining);
+
+      // Switch to first remaining conversation
+      if (activeConversationId === conversationId && remaining.length > 0) {
+        setActiveConversationId(remaining[0].id);
+      }
+    } catch (error) {
+      console.error("Failed to delete conversation:", error);
+    }
+  };
+
+  // Auto-name conversation from first message
+  const handleFirstMessage = async (messageContent: string) => {
+    if (!activeConversationId) return;
+
+    const activeConvo = conversations.find(
+      (c) => c.id === activeConversationId
+    );
+    if (!activeConvo) return;
+
+    // Only auto-name if conversation still has default name (Chat N)
+    if (!activeConvo.name.match(/^Chat \d+$/)) {
+      return; // User has already renamed it
+    }
+
+    // Extract first ~50 chars, strip markdown, trim
+    let autoName = messageContent
+      .replace(/[#*`_~[\]()]/g, "") // Remove markdown symbols
+      .replace(/\s+/g, " ") // Normalize whitespace
+      .trim()
+      .slice(0, 50);
+
+    if (autoName.length === 50 && messageContent.length > 50) {
+      autoName += "...";
+    }
+
+    // Fallback if message is empty or too short
+    if (autoName.length < 3) {
+      return;
+    }
+
+    try {
+      await updateConversation(activeConversationId, { name: autoName });
+      setConversations(
+        conversations.map((c) =>
+          c.id === activeConversationId ? { ...c, name: autoName } : c
+        )
+      );
+    } catch (error) {
+      console.error("Failed to auto-name conversation:", error);
     }
   };
 
   // Load cache stats on mount
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     (async () => {
       try {
-        const { getPackCacheStats } = await import('@/lib/packCacheClient');
+        const { getPackCacheStats } = await import("@/lib/packCacheClient");
         const stats = await getPackCacheStats();
         setCacheStats({
           entryCount: stats.entryCount,
           totalSizeMB: stats.totalSizeMB,
         });
       } catch (error) {
-        console.error('Failed to load cache stats:', error);
+        console.error("Failed to load cache stats:", error);
       }
     })();
   }, [packResult]); // Refresh after packing
@@ -628,8 +805,9 @@ export default function Home() {
   const allRepos = [
     ...repos,
     ...Array.from(addedExternalRepos.values()).filter(
-      extRepo => !repos.some(orgRepo => orgRepo.fullName === extRepo.fullName)
-    )
+      (extRepo) =>
+        !repos.some((orgRepo) => orgRepo.fullName === extRepo.fullName)
+    ),
   ];
   const filteredRepos = allRepos
     .filter(
@@ -658,8 +836,18 @@ export default function Home() {
           className="p-2 -ml-2 text-neutral-400 hover:text-neutral-200 transition"
           aria-label="Open menu"
         >
-          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          <svg
+            className="w-6 h-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M4 6h16M4 12h16M4 18h16"
+            />
           </svg>
         </button>
         <Image src="/icon-no-bg.png" alt="Vana Logo" width={24} height={24} />
@@ -678,18 +866,24 @@ export default function Home() {
       <div className="flex pt-16 lg:pt-0">
         <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] w-full max-w-[1600px] mx-auto">
           {/* Left Sidebar */}
-          <aside className={`
+          <aside
+            className={`
             fixed lg:relative
             inset-y-0 left-0
             w-[320px] lg:w-[400px]
             bg-neutral-950
             border-r border-neutral-800
             lg:sticky lg:top-0 lg:h-screen
-            flex flex-col
+            overflow-y-auto
             transition-transform duration-300
             z-50
-            ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-          `}>
+            ${
+              sidebarOpen
+                ? "translate-x-0"
+                : "-translate-x-full lg:translate-x-0"
+            }
+          `}
+          >
             {/* Compact Header + Token Meter */}
             <div className="flex-shrink-0 p-4 border-b border-neutral-800">
               {/* Close button (mobile only) */}
@@ -698,8 +892,18 @@ export default function Home() {
                 className="lg:hidden absolute top-4 right-4 p-1 text-neutral-400 hover:text-neutral-200 transition"
                 aria-label="Close menu"
               >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
 
@@ -712,7 +916,9 @@ export default function Home() {
                   height={32}
                 />
                 <div className="flex-1 min-w-0">
-                  <h1 className="text-base font-bold truncate">Vana Source Query</h1>
+                  <h1 className="text-base font-bold truncate">
+                    Vana Source Query
+                  </h1>
                   <p className="text-[10px] text-neutral-500">
                     Load → Select → Pack → Copy
                   </p>
@@ -739,7 +945,8 @@ export default function Home() {
                         }`}
                         style={{
                           width: `${Math.min(
-                            (tokenResult!.totalTokens / tokenResult!.modelLimit) *
+                            (tokenResult!.totalTokens /
+                              tokenResult!.modelLimit) *
                               100,
                             100
                           )}%`,
@@ -751,7 +958,10 @@ export default function Home() {
                     {loading ? (
                       <span className="text-neutral-400">
                         Packing {selectedRepos.size}{" "}
-                        {selectedRepos.size === 1 ? "repository" : "repositories"}...
+                        {selectedRepos.size === 1
+                          ? "repository"
+                          : "repositories"}
+                        ...
                       </span>
                     ) : (
                       <>
@@ -760,11 +970,7 @@ export default function Home() {
                             (sum, r) => sum + r.stats.fileCount,
                             0
                           )}{" "}
-                          files
-                          {packCacheStatus === 'fresh' && (
-                            <span className="text-ok" title="Loaded from cache (instant)">● cached</span>
-                          )}
-                          {" "}•{" "}
+                          files •{" "}
                           {countingTokens ? (
                             <span className="flex items-center gap-1 text-neutral-400">
                               <Spinner size="sm" />
@@ -779,7 +985,8 @@ export default function Home() {
                           )}
                         </span>
                         <span>
-                          {availableModels.find(m => m.name === geminiModel)?.displayName || geminiModel}
+                          {availableModels.find((m) => m.name === geminiModel)
+                            ?.displayName || geminiModel}
                         </span>
                       </>
                     )}
@@ -819,53 +1026,197 @@ export default function Home() {
               )}
             </div>
 
-            {/* Gemini Settings */}
-            <div className="flex-shrink-0 p-4 border-b border-neutral-800 space-y-3">
-              <div className="eyebrow">Gemini Settings</div>
-
-              {/* Model Selection */}
-              <div>
-                <label className="block text-xs text-neutral-400 mb-1">Model</label>
-                <select
-                  value={geminiModel}
-                  onChange={(e) => setGeminiModel(e.target.value)}
-                  className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 cursor-pointer"
-                >
-                  {availableModels.length > 0 ? (
-                    availableModels.map((model) => (
-                      <option key={model.name} value={model.name}>
-                        {model.displayName}
-                      </option>
-                    ))
-                  ) : (
-                    <option value={config.gemini.defaultModel}>Loading models...</option>
-                  )}
-                </select>
+            {/* Conversations */}
+            <div className="flex-shrink-0 border-b border-neutral-800">
+              <div className="px-4 pt-4 pb-3">
+                {/* Header with inline New Chat button */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="eyebrow">Conversations</div>
+                  <button
+                    onClick={handleNewConversation}
+                    className="text-xs text-brand-500 hover:text-brand-400 transition cursor-pointer font-medium"
+                  >
+                    + New
+                  </button>
+                </div>
               </div>
 
-              {/* Thinking Budget (only for 2.5 models) */}
-              {(geminiModel.includes('2.5')) && (
-                <div>
-                  <label className="block text-xs text-neutral-400 mb-1">
-                    Thinking Mode
-                    <span className="text-neutral-600 ml-1" title="Controls reasoning depth: Auto adapts to complexity, Maximum for deep analysis, Off for speed">ⓘ</span>
-                  </label>
-                  <select
-                    value={thinkingBudget}
-                    onChange={(e) => setThinkingBudget(Number(e.target.value))}
-                    className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 cursor-pointer"
-                  >
-                    <option value={-1}>Auto (dynamic)</option>
-                    <option value={32768}>Maximum (32K)</option>
-                    <option value={0}>Off (fastest)</option>
-                  </select>
+              {/* Conversation List - Scrollable */}
+              {conversations.length > 0 ? (
+                <div className="max-h-[30vh] overflow-y-auto">
+                  {conversations.map((convo) => {
+                    const isActive = convo.id === activeConversationId;
+                    const isEditing = convo.id === editingConversationId;
+
+                    return (
+                      <div
+                        key={convo.id}
+                        className={`group relative border-b border-neutral-900 ${
+                          isActive
+                            ? "bg-neutral-800"
+                            : "hover:bg-neutral-900/30"
+                        } transition`}
+                      >
+                        {isEditing ? (
+                          // Inline rename input
+                          <div className="px-4 py-3">
+                            <input
+                              type="text"
+                              value={editingName}
+                              onChange={(e) => setEditingName(e.target.value)}
+                              onBlur={() => {
+                                handleRenameConversation(convo.id, editingName);
+                                setEditingConversationId(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handleRenameConversation(
+                                    convo.id,
+                                    editingName
+                                  );
+                                  setEditingConversationId(null);
+                                } else if (e.key === "Escape") {
+                                  setEditingConversationId(null);
+                                }
+                              }}
+                              autoFocus
+                              className="w-full rounded border border-brand-500 bg-neutral-900 px-2 py-1 text-sm text-neutral-100 focus:outline-none"
+                            />
+                          </div>
+                        ) : (
+                          <div
+                            onClick={() => handleSwitchConversation(convo.id)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                handleSwitchConversation(convo.id);
+                              }
+                            }}
+                            className="w-full text-left px-4 py-2 flex items-center gap-2 cursor-pointer"
+                          >
+                            {/* Conversation name */}
+                            <span
+                              className={`flex-1 text-sm truncate ${
+                                isActive
+                                  ? "text-neutral-100 font-medium"
+                                  : "text-neutral-300"
+                              }`}
+                            >
+                              {convo.name}
+                            </span>
+
+                            {/* Hover actions - desktop only */}
+                            <div className="hidden group-hover:flex items-center gap-1 flex-shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingConversationId(convo.id);
+                                  setEditingName(convo.name);
+                                }}
+                                className="p-1 rounded hover:bg-neutral-700 transition text-neutral-400 hover:text-neutral-100"
+                                title="Rename"
+                              >
+                                <svg
+                                  className="w-3.5 h-3.5"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                  />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteConversation(convo.id);
+                                }}
+                                className="p-1 rounded hover:bg-neutral-700 transition text-neutral-400 hover:text-red-400"
+                                title="Delete"
+                              >
+                                <svg
+                                  className="w-3.5 h-3.5"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+
+                            {/* Mobile actions - always visible on small screens */}
+                            <div className="flex sm:hidden items-center gap-1 flex-shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingConversationId(convo.id);
+                                  setEditingName(convo.name);
+                                }}
+                                className="p-1.5 rounded hover:bg-neutral-700 transition text-neutral-400"
+                                title="Rename"
+                              >
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                  />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteConversation(convo.id);
+                                }}
+                                className="p-1.5 rounded hover:bg-neutral-700 transition text-neutral-400"
+                                title="Delete"
+                              >
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="px-4 py-8 text-center text-sm text-neutral-500">
+                  No conversations yet
                 </div>
               )}
             </div>
 
-            {/* Repositories Section - Scrollable */}
-            <div className="flex-shrink-0 p-6 border-b border-neutral-800">
-
+            {/* Repositories Section */}
             {loading && repos.length === 0 ? (
               <div className="text-center py-12 text-neutral-400">
                 Loading repositories...
@@ -894,229 +1245,313 @@ export default function Home() {
                 </button>
               </div>
             ) : repos.length > 0 ? (
-              <>
-                {/* Search */}
-                <input
-                  type="text"
-                  value={repoFilter}
-                  onChange={(e) => setRepoFilter(e.target.value)}
-                  placeholder="Search repositories..."
-                  className="input mb-4"
-                />
-
-                {/* Count */}
-                <div className="mb-3 flex items-center justify-between text-xs text-neutral-500">
-                  <span>
-                    {filteredRepos.length}{" "}
-                    {filteredRepos.length === 1 ? "repository" : "repositories"}
-                  </span>
-                  {selectedRepos.size > 0 && (
-                    <span className="text-brand-500">
-                      {selectedRepos.size} selected
-                    </span>
-                  )}
-                </div>
-
-                {/* External Repo Validation (when search contains / and not already available) */}
-                {externalRepoInput && (!validatedExternalRepo ||
-                  (!addedExternalRepos.has(validatedExternalRepo.fullName) &&
-                   !repos.some(r => r.fullName === validatedExternalRepo.fullName))) && (
-                  <div className="mb-4 p-3 border border-neutral-800 rounded-lg bg-neutral-900/30">
-                    <div className="text-xs text-neutral-400 mb-2">
-                      External Repository
+              <div className="border-b border-neutral-800">
+                <div className="px-4 pt-4 pb-3">
+                    <div className="relative mb-3">
+                      <input
+                        type="text"
+                        value={repoFilter}
+                        onChange={(e) => setRepoFilter(e.target.value)}
+                        placeholder="Search repositories..."
+                        className="input pr-24"
+                      />
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-xs text-neutral-500">
+                        {filteredRepos.length}{" "}
+                        {filteredRepos.length === 1 ? "repo" : "repos"}
+                      </div>
                     </div>
-                    {externalRepoValidating ? (
-                      <div className="flex items-center gap-2 text-sm text-neutral-300">
-                        <Spinner />
-                        <span>Validating {externalRepoInput}...</span>
-                      </div>
-                    ) : externalRepoError ? (
-                      <div className="flex items-center gap-2 text-sm text-red-400">
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                        </svg>
-                        <span>{externalRepoError}</span>
-                      </div>
-                    ) : validatedExternalRepo ? (
-                      <button
-                        onClick={() => {
-                          const newSet = new Set(selectedRepos);
-                          const isSelected = selectedRepos.has(validatedExternalRepo.fullName);
-                          if (isSelected) {
-                            newSet.delete(validatedExternalRepo.fullName);
-                          } else {
-                            newSet.add(validatedExternalRepo.fullName);
-                            // Add to persistent external repos map (only if not already in org repos)
-                            if (!repos.some(r => r.fullName === validatedExternalRepo.fullName)) {
-                              setAddedExternalRepos(prev => new Map(prev).set(validatedExternalRepo.fullName, validatedExternalRepo));
-                            }
-                          }
-                          setSelectedRepos(newSet);
-                        }}
-                        className="w-full text-left p-2 rounded hover:bg-neutral-800/50 transition"
-                      >
-                        <div className="flex items-center gap-3">
-                          {/* Checkmark */}
-                          <div className="flex-shrink-0 w-5 h-5">
-                            {selectedRepos.has(validatedExternalRepo.fullName) && (
-                              <div className="w-5 h-5 rounded-full bg-brand-600 flex items-center justify-center">
-                                <svg
-                                  className="w-3 h-3 text-white"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  stroke="currentColor"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={3}
-                                    d="M5 13l4 4L19 7"
-                                  />
-                                </svg>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-neutral-100">
-                                {validatedExternalRepo.name}
-                              </span>
-                              <span className="text-xs text-neutral-500 flex-shrink-0">
-                                {validatedExternalRepo.fullName.split('/')[0]}
-                              </span>
-                              <span className="text-xs text-emerald-400">
-                                {validatedExternalRepo.private ? "🔒 Private" : "🌐 Public"}
-                              </span>
-                            </div>
-                            {validatedExternalRepo.description && (
-                              <div className="mt-0.5 text-xs text-neutral-400 truncate">
-                                {validatedExternalRepo.description}
-                              </div>
-                            )}
-                            <div className="mt-0.5 text-xs text-neutral-500 truncate">
-                              Updated {formatRelativeTime(validatedExternalRepo.pushedAt)}
-                            </div>
-                          </div>
-
-                          {/* GitHub link button */}
-                          <a
-                            href={`https://github.com/${validatedExternalRepo.fullName}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="flex-shrink-0 p-2 rounded hover:bg-neutral-800 transition text-neutral-400 hover:text-neutral-100"
-                            title="Open in GitHub"
-                          >
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                              <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
-                              <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
-                            </svg>
-                          </a>
-                        </div>
-                      </button>
-                    ) : null}
-                  </div>
-                )}
-
-                {/* Repo List - Scrollable */}
-                {filteredRepos.length > 0 ? (
-                  <div className="border-t border-neutral-900 max-h-[25vh] overflow-y-auto">
-                    {filteredRepos.map((repo) => {
-                      const isSelected = selectedRepos.has(repo.fullName);
-                      return (
+                    {selectedRepos.size > 0 && (
+                      <div className="mb-3 flex items-center justify-end gap-2 text-xs">
+                        <span className="text-brand-500">
+                          {selectedRepos.size} selected
+                        </span>
                         <button
-                          key={repo.fullName}
-                          onClick={() => {
-                            const newSet = new Set(selectedRepos);
-                            if (isSelected) {
-                              newSet.delete(repo.fullName);
-                            } else {
-                              newSet.add(repo.fullName);
-                            }
-                            setSelectedRepos(newSet);
-                          }}
-                          aria-selected={isSelected}
-                          className="group w-full text-left px-3 py-3 border-b border-neutral-900 transition focus-ring hover:bg-neutral-900/30"
+                          onClick={() => setSelectedRepos(new Set())}
+                          className="text-neutral-500 hover:text-neutral-300 underline cursor-pointer"
                         >
-                          <div className="flex items-center gap-3">
-                            {/* Checkmark - only visible when selected */}
-                            <div className="flex-shrink-0 w-5 h-5">
-                              {isSelected && (
-                                <div className="w-5 h-5 rounded-full bg-brand-600 flex items-center justify-center">
-                                  <svg
-                                    className="w-3 h-3 text-white"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={3}
-                                      d="M5 13l4 4L19 7"
-                                    />
-                                  </svg>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium truncate text-neutral-100">
-                                  {repo.name}
-                                </span>
-                                <span className="text-xs text-neutral-500 flex-shrink-0">
-                                  {repo.fullName.split('/')[0]}
-                                </span>
-                              </div>
-                              {repo.description && (
-                                <div className="mt-0.5 text-xs text-neutral-400 truncate">
-                                  {repo.description}
-                                </div>
-                              )}
-                              <div className="mt-0.5 text-xs text-neutral-500 truncate">
-                                Updated {formatRelativeTime(repo.pushedAt)}
-                              </div>
-                              {/* Branch input for selected repos */}
-                              {isSelected && (
-                                <div className="mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                                  <span className="text-[10px] text-neutral-500">Branch:</span>
-                                  <input
-                                    type="text"
-                                    value={repoBranches[repo.fullName] || repo.defaultBranch}
-                                    onChange={(e) => {
-                                      setRepoBranches({
-                                        ...repoBranches,
-                                        [repo.fullName]: e.target.value,
-                                      });
-                                    }}
-                                    onBlur={handleTextBlur}
-                                    placeholder={repo.defaultBranch}
-                                    className="flex-1 px-2 py-0.5 text-xs rounded border border-neutral-700 bg-neutral-800 text-neutral-200 placeholder-neutral-500 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                                  />
-                                </div>
-                              )}
-                            </div>
-
-                            {/* GitHub link button */}
-                            <a
-                              href={`https://github.com/${repo.fullName}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className="flex-shrink-0 p-2 rounded hover:bg-neutral-800 transition text-neutral-400 hover:text-neutral-100"
-                              title="Open in GitHub"
-                            >
-                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
-                                <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
-                              </svg>
-                            </a>
-                          </div>
+                          clear
                         </button>
-                      );
-                    })}
+                      </div>
+                    )}
                   </div>
-                ) : null}
+
+                  {/* External Repo Validation (when search contains / and not already available) */}
+                  {externalRepoInput &&
+                    (!validatedExternalRepo ||
+                      (!addedExternalRepos.has(
+                        validatedExternalRepo.fullName
+                      ) &&
+                        !repos.some(
+                          (r) => r.fullName === validatedExternalRepo.fullName
+                        ))) && (
+                      <div className="mb-4 p-3 border border-neutral-800 rounded-lg bg-neutral-900/30">
+                        <div className="text-xs text-neutral-400 mb-2">
+                          External Repository
+                        </div>
+                        {externalRepoValidating ? (
+                          <div className="flex items-center gap-2 text-sm text-neutral-300">
+                            <Spinner />
+                            <span>Validating {externalRepoInput}...</span>
+                          </div>
+                        ) : externalRepoError ? (
+                          <div className="flex items-center gap-2 text-sm text-red-400">
+                            <svg
+                              className="w-4 h-4"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                            <span>{externalRepoError}</span>
+                          </div>
+                        ) : validatedExternalRepo ? (
+                          <button
+                            onClick={() => {
+                              const newSet = new Set(selectedRepos);
+                              const isSelected = selectedRepos.has(
+                                validatedExternalRepo.fullName
+                              );
+                              if (isSelected) {
+                                newSet.delete(validatedExternalRepo.fullName);
+                              } else {
+                                newSet.add(validatedExternalRepo.fullName);
+                                // Add to persistent external repos map (only if not already in org repos)
+                                if (
+                                  !repos.some(
+                                    (r) =>
+                                      r.fullName ===
+                                      validatedExternalRepo.fullName
+                                  )
+                                ) {
+                                  setAddedExternalRepos((prev) =>
+                                    new Map(prev).set(
+                                      validatedExternalRepo.fullName,
+                                      validatedExternalRepo
+                                    )
+                                  );
+                                }
+                              }
+                              setSelectedRepos(newSet);
+                            }}
+                            className="w-full text-left p-2 rounded hover:bg-neutral-800/50 transition"
+                          >
+                            <div className="flex items-center gap-3">
+                              {/* Checkmark */}
+                              <div className="flex-shrink-0 w-5 h-5">
+                                {selectedRepos.has(
+                                  validatedExternalRepo.fullName
+                                ) && (
+                                  <div className="w-5 h-5 rounded-full bg-brand-600 flex items-center justify-center">
+                                    <svg
+                                      className="w-3 h-3 text-white"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={3}
+                                        d="M5 13l4 4L19 7"
+                                      />
+                                    </svg>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium text-neutral-100">
+                                    {validatedExternalRepo.name}
+                                  </span>
+                                  {(() => {
+                                    const branch = repoBranches[validatedExternalRepo.fullName] || validatedExternalRepo.defaultBranch;
+                                    const cacheKey = `${validatedExternalRepo.fullName}:${branch}`;
+                                    return cachedRepos?.has(cacheKey) && (
+                                      <span
+                                        className="text-ok text-xs flex-shrink-0"
+                                        title="Cached"
+                                      >
+                                        ●
+                                      </span>
+                                    );
+                                  })()}
+                                  <span className="text-xs text-neutral-500 flex-shrink-0">
+                                    {
+                                      validatedExternalRepo.fullName.split(
+                                        "/"
+                                      )[0]
+                                    }
+                                  </span>
+                                  <span className="text-xs text-emerald-400">
+                                    {validatedExternalRepo.private
+                                      ? "🔒 Private"
+                                      : "🌐 Public"}
+                                  </span>
+                                </div>
+                                {validatedExternalRepo.description && (
+                                  <div className="mt-0.5 text-xs text-neutral-400 truncate">
+                                    {validatedExternalRepo.description}
+                                  </div>
+                                )}
+                                <div className="mt-0.5 text-xs text-neutral-500 truncate">
+                                  Updated{" "}
+                                  {formatRelativeTime(
+                                    validatedExternalRepo.pushedAt
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* GitHub link button */}
+                              <a
+                                href={`https://github.com/${validatedExternalRepo.fullName}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="flex-shrink-0 p-2 rounded hover:bg-neutral-800 transition text-neutral-400 hover:text-neutral-100"
+                                title="Open in GitHub"
+                              >
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="currentColor"
+                                  viewBox="0 0 20 20"
+                                >
+                                  <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+                                  <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+                                </svg>
+                              </a>
+                            </div>
+                          </button>
+                        ) : null}
+                      </div>
+                    )}
+
+                  {/* Repo List - Scrollable */}
+                  {filteredRepos.length > 0 ? (
+                    <div className="border-t border-neutral-900 max-h-[25vh] overflow-y-auto">
+                      {filteredRepos.map((repo) => {
+                        const isSelected = selectedRepos.has(repo.fullName);
+                        return (
+                          <button
+                            key={repo.fullName}
+                            onClick={() => {
+                              const newSet = new Set(selectedRepos);
+                              if (isSelected) {
+                                newSet.delete(repo.fullName);
+                              } else {
+                                newSet.add(repo.fullName);
+                              }
+                              setSelectedRepos(newSet);
+                            }}
+                            aria-selected={isSelected}
+                            className="group w-full text-left px-3 py-3 border-b border-neutral-900 transition focus-ring hover:bg-neutral-900/30"
+                          >
+                            <div className="flex items-center gap-3">
+                              {/* Checkmark - only visible when selected */}
+                              <div className="flex-shrink-0 w-5 h-5">
+                                {isSelected && (
+                                  <div className="w-5 h-5 rounded-full bg-brand-600 flex items-center justify-center">
+                                    <svg
+                                      className="w-3 h-3 text-white"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={3}
+                                        d="M5 13l4 4L19 7"
+                                      />
+                                    </svg>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium truncate text-neutral-100">
+                                    {repo.name}
+                                  </span>
+                                  {(() => {
+                                    const branch = repoBranches[repo.fullName] || repo.defaultBranch;
+                                    const cacheKey = `${repo.fullName}:${branch}`;
+                                    return cachedRepos?.has(cacheKey) && (
+                                      <span
+                                        className="text-ok text-xs flex-shrink-0"
+                                        title="Cached"
+                                      >
+                                        ●
+                                      </span>
+                                    );
+                                  })()}
+                                  <span className="text-xs text-neutral-500 flex-shrink-0">
+                                    {repo.fullName.split("/")[0]}
+                                  </span>
+                                </div>
+                                {repo.description && (
+                                  <div className="mt-0.5 text-xs text-neutral-400 truncate">
+                                    {repo.description}
+                                  </div>
+                                )}
+                                <div className="mt-0.5 text-xs text-neutral-500 truncate">
+                                  Updated {formatRelativeTime(repo.pushedAt)}
+                                </div>
+                                {/* Branch input for selected repos */}
+                                {isSelected && (
+                                  <div
+                                    className="mt-2 flex items-center gap-2"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <span className="text-[10px] text-neutral-500">
+                                      Branch:
+                                    </span>
+                                    <input
+                                      type="text"
+                                      value={
+                                        repoBranches[repo.fullName] ||
+                                        repo.defaultBranch
+                                      }
+                                      onChange={(e) => {
+                                        setRepoBranches({
+                                          ...repoBranches,
+                                          [repo.fullName]: e.target.value,
+                                        });
+                                      }}
+                                      onBlur={handleTextBlur}
+                                      placeholder={repo.defaultBranch}
+                                      className="flex-1 px-2 py-0.5 text-xs rounded border border-neutral-700 bg-neutral-800 text-neutral-200 placeholder-neutral-500 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* GitHub link button */}
+                              <a
+                                href={`https://github.com/${repo.fullName}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="flex-shrink-0 p-2 rounded hover:bg-neutral-800 transition text-neutral-400 hover:text-neutral-100"
+                                title="Open in GitHub"
+                              >
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="currentColor"
+                                  viewBox="0 0 20 20"
+                                >
+                                  <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+                                  <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+                                </svg>
+                              </a>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
 
                 {/* No results message */}
                 {filteredRepos.length === 0 && (
@@ -1127,15 +1562,69 @@ export default function Home() {
                     </div>
                   </div>
                 )}
-              </>
+              </div>
             ) : null}
-            </div>
 
-            {/* Settings Section - Always Visible */}
-            <div className="flex-1 overflow-y-auto p-6 flex flex-col">
-            {/* Filters */}
-            <div>
-              <div className="space-y-4">
+            {/* Settings Section */}
+            <div className="px-4 pt-4 pb-6 space-y-4">
+                {/* Model Selection */}
+                <div>
+                  <label className="block text-xs font-medium mb-1.5 text-neutral-200">
+                    Model
+                  </label>
+                  <select
+                    value={geminiModel}
+                    onChange={(e) => setGeminiModel(e.target.value)}
+                    className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 cursor-pointer"
+                  >
+                    {availableModels.length > 0 ? (
+                      availableModels.map((model) => (
+                        <option key={model.name} value={model.name}>
+                          {model.displayName}
+                        </option>
+                      ))
+                    ) : (
+                      <option value={config.gemini.defaultModel}>
+                        Loading models...
+                      </option>
+                    )}
+                  </select>
+                </div>
+
+                {/* Thinking Budget (only for models that support thinking) */}
+                {(() => {
+                  const selectedModel = availableModels.find(
+                    (m) => m.name === geminiModel
+                  );
+                  const maxBudget = selectedModel?.maxThinkingBudget || 24576;
+                  const maxLabel = maxBudget === 32768 ? "32K" : "24K";
+
+                  return selectedModel?.supportsThinking ? (
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5 text-neutral-200">
+                        Thinking Mode
+                        <span
+                          className="text-neutral-600 ml-1"
+                          title="Controls reasoning depth: Auto adapts to complexity, Maximum for deep analysis, Off for speed"
+                        >
+                          ⓘ
+                        </span>
+                      </label>
+                      <select
+                        value={thinkingBudget}
+                        onChange={(e) =>
+                          setThinkingBudget(Number(e.target.value))
+                        }
+                        className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 cursor-pointer"
+                      >
+                        <option value={-1}>Auto (dynamic)</option>
+                        <option value={maxBudget}>Maximum ({maxLabel})</option>
+                        <option value={0}>Off (fastest)</option>
+                      </select>
+                    </div>
+                  ) : null;
+                })()}
+
                 {/* Include globs */}
                 <div>
                   <label className="block text-xs font-medium mb-1.5 text-neutral-200">
@@ -1178,9 +1667,7 @@ export default function Home() {
                     <input
                       type="checkbox"
                       checked={respectGitignore}
-                      onChange={(e) =>
-                        setRespectGitignore(e.target.checked)
-                      }
+                      onChange={(e) => setRespectGitignore(e.target.checked)}
                       className="peer sr-only"
                     />
                     <div className="w-3.5 h-3.5 rounded border border-neutral-700 bg-neutral-900 peer-checked:bg-brand-600 peer-checked:border-brand-600 transition flex items-center justify-center">
@@ -1214,9 +1701,7 @@ export default function Home() {
                     <input
                       type="checkbox"
                       checked={respectAiIgnore}
-                      onChange={(e) =>
-                        setRespectAiIgnore(e.target.checked)
-                      }
+                      onChange={(e) => setRespectAiIgnore(e.target.checked)}
                       className="peer sr-only"
                     />
                     <div className="w-3.5 h-3.5 rounded border border-neutral-700 bg-neutral-900 peer-checked:bg-brand-600 peer-checked:border-brand-600 transition flex items-center justify-center">
@@ -1250,9 +1735,7 @@ export default function Home() {
                     <input
                       type="checkbox"
                       checked={useDefaultPatterns}
-                      onChange={(e) =>
-                        setUseDefaultPatterns(e.target.checked)
-                      }
+                      onChange={(e) => setUseDefaultPatterns(e.target.checked)}
                       className="peer sr-only"
                     />
                     <div className="w-3.5 h-3.5 rounded border border-neutral-700 bg-neutral-900 peer-checked:bg-brand-600 peer-checked:border-brand-600 transition flex items-center justify-center">
@@ -1280,83 +1763,59 @@ export default function Home() {
                   </div>
                 </label>
               </div>
-            </div>
 
-            {/* Directory Structure */}
-            {packResult && (
-              <div className="mt-6">
-                <h3 className="text-sm font-semibold mb-4 text-neutral-100">
-                  Directory Structure
-                </h3>
-                <div className="space-y-2">
-                  {packResult.repos.map((repo, idx) => {
-                    if (repo.error) return null
+              {/* Directory Structure */}
+              {packResult && (
+                <div className="px-4 mt-6">
+                  <h3 className="text-sm font-semibold mb-4 text-neutral-100">
+                    Directory Structures
+                  </h3>
+                  <div className="space-y-2">
+                    {packResult.repos.map((repo, idx) => {
+                      if (repo.error) return null;
 
-                    const structureMatch = repo.output.match(
-                      /<directory_structure>\s*([\s\S]*?)\s*<\/directory_structure>/
-                    )
+                      const structureMatch = repo.output.match(
+                        /<directory_structure>\s*([\s\S]*?)\s*<\/directory_structure>/
+                      );
 
-                    if (!structureMatch) return null
+                      if (!structureMatch) return null;
 
-                    return (
-                      <details
-                        key={idx}
-                        className="group"
-                      >
-                        <summary className="cursor-pointer list-none">
-                          <div className="flex items-center gap-2 p-2 hover:bg-neutral-900 rounded-lg transition text-xs">
-                            <svg
-                              className="w-3 h-3 text-neutral-500 transition-transform group-open:rotate-90 flex-shrink-0"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M9 5l7 7-7 7"
-                              />
-                            </svg>
-                            <span className="font-mono font-medium text-neutral-200 truncate">
-                              {repo.repo.split('/')[1] || repo.repo}
-                            </span>
-                            <span className="text-neutral-600 ml-auto flex-shrink-0">
-                              {repo.stats.fileCount}
-                            </span>
+                      return (
+                        <details key={idx} className="group">
+                          <summary className="cursor-pointer list-none">
+                            <div className="flex items-center gap-2 p-2 hover:bg-neutral-900 rounded-lg transition text-xs">
+                              <svg
+                                className="w-3 h-3 text-neutral-500 transition-transform group-open:rotate-90 flex-shrink-0"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 5l7 7-7 7"
+                                />
+                              </svg>
+                              <span className="font-mono font-medium text-neutral-200 truncate">
+                                {repo.repo.split("/")[1] || repo.repo}
+                              </span>
+                              <span className="text-neutral-600 ml-auto flex-shrink-0">
+                                {repo.stats.fileCount}
+                              </span>
+                            </div>
+                          </summary>
+                          <div className="mt-1 ml-5">
+                            <pre className="text-[10px] leading-tight overflow-x-auto p-2 bg-neutral-950 rounded border border-neutral-800 font-mono whitespace-pre text-neutral-400 max-h-60 overflow-y-auto">
+                              {structureMatch[1].trim()}
+                            </pre>
                           </div>
-                        </summary>
-                        <div className="mt-1 ml-5">
-                          <pre className="text-[10px] leading-tight overflow-x-auto p-2 bg-neutral-950 rounded border border-neutral-800 font-mono whitespace-pre text-neutral-400 max-h-60 overflow-y-auto">
-                            {structureMatch[1].trim()}
-                          </pre>
-                        </div>
-                      </details>
-                    )
-                  })}
+                        </details>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
-
-            {/* Cache Management */}
-            {cacheStats && cacheStats.entryCount > 0 && (
-              <div className="mt-6 pt-6 border-t border-neutral-800">
-                <h3 className="text-sm font-semibold mb-2 text-neutral-100">
-                  Pack Cache
-                </h3>
-                <div className="text-[11px] text-neutral-500 space-y-1 mb-3">
-                  <div>{cacheStats.entryCount} {cacheStats.entryCount === 1 ? 'repo' : 'repos'} cached</div>
-                  <div>{cacheStats.totalSizeMB.toFixed(1)} MB used</div>
-                </div>
-                <button
-                  onClick={handleClearCache}
-                  className="text-[11px] text-neutral-400 hover:text-neutral-200 underline"
-                >
-                  Clear cache
-                </button>
-              </div>
-            )}
-            </div>
+              )}
           </aside>
 
           {/* Right Pane: Controls & Results */}
@@ -1385,63 +1844,79 @@ export default function Home() {
                   className="text-danger/60 hover:text-danger transition"
                   aria-label="Dismiss error"
                 >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>
             )}
 
-                {/* Chat Interface - Main CTA */}
-                {packHash && (
-                  <Chat
-                    packedContext={getCompleteContext()}
-                    packHash={packHash}
-                    modelId={geminiModel}
-                    thinkingBudget={thinkingBudget}
-                  />
+            {/* Chat Interface - Main CTA */}
+            {activeConversationId && (
+              <Chat
+                packedContext={getCompleteContext()}
+                conversationId={activeConversationId}
+                modelId={geminiModel}
+                thinkingBudget={
+                  availableModels.find((m) => m.name === geminiModel)
+                    ?.supportsThinking
+                    ? thinkingBudget
+                    : undefined
+                }
+                onFirstMessage={handleFirstMessage}
+              />
+            )}
+
+            {packResult && (
+              <>
+                {/* Errors */}
+                {packResult.errors.length > 0 && (
+                  <div className="mb-6 p-4 bg-danger/10 border border-danger/30 rounded-xl">
+                    <div className="font-semibold text-sm mb-2 text-danger">
+                      Errors
+                    </div>
+                    {packResult.errors.map((err, i) => (
+                      <div key={i} className="text-sm text-danger/90">
+                        {err}
+                      </div>
+                    ))}
+                  </div>
                 )}
 
-                {packResult && (
-                  <>
-                    {/* Errors */}
-                    {packResult.errors.length > 0 && (
-                      <div className="mb-6 p-4 bg-danger/10 border border-danger/30 rounded-xl">
-                        <div className="font-semibold text-sm mb-2 text-danger">
-                          Errors
-                        </div>
-                        {packResult.errors.map((err, i) => (
-                          <div key={i} className="text-sm text-danger/90">
-                            {err}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Success Toast */}
-                    {copiedMessage && (
-                      <div className="mb-6 p-4 bg-ok/10 border-2 border-ok rounded-xl text-ok text-center shadow-lg">
-                        <div className="flex items-center justify-center gap-2">
-                          <span className="text-sm">{copiedMessage}</span>
-                          {countdown !== null && (
-                            <span className="text-2xl font-bold tabular-nums">
-                              {countdown}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Download Toast */}
-                    {downloadMessage && (
-                      <div className="mb-6 p-4 bg-ok/10 border-2 border-ok rounded-xl text-ok text-center shadow-lg">
-                        <div className="flex items-center justify-center gap-2">
-                          <span className="text-sm">{downloadMessage}</span>
-                        </div>
-                      </div>
-                    )}
-                  </>
+                {/* Success Toast */}
+                {copiedMessage && (
+                  <div className="mb-6 p-4 bg-ok/10 border-2 border-ok rounded-xl text-ok text-center shadow-lg">
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="text-sm">{copiedMessage}</span>
+                      {countdown !== null && (
+                        <span className="text-2xl font-bold tabular-nums">
+                          {countdown}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 )}
+
+                {/* Download Toast */}
+                {downloadMessage && (
+                  <div className="mb-6 p-4 bg-ok/10 border-2 border-ok rounded-xl text-ok text-center shadow-lg">
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="text-sm">{downloadMessage}</span>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       </div>

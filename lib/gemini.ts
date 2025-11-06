@@ -85,18 +85,23 @@ export class GeminiClient {
     thinkingBudget?: number
   ): AsyncGenerator<string, void, unknown> {
     try {
+      console.log(`[gemini] Starting chat with model: ${modelId}, thinkingBudget: ${thinkingBudget}`)
+
       // Build generation config
       const generationConfig: any = {}
 
-      // Only add thinking budget for 2.5 models and if specified
-      if (modelId.includes('2.5') && thinkingBudget !== undefined) {
-        generationConfig.thinkingBudget = thinkingBudget
+      // Only add thinking budget if specified (frontend filters by model capability)
+      if (thinkingBudget !== undefined) {
+        generationConfig.thinkingConfig = { thinkingBudget }
       }
 
-      const model = this.client.getGenerativeModel({
+      const modelConfig = {
         model: modelId,
         ...(Object.keys(generationConfig).length > 0 ? { generationConfig } : {})
-      })
+      }
+      console.log(`[gemini] Model config:`, modelConfig)
+
+      const model = this.client.getGenerativeModel(modelConfig)
 
       const result = await model.generateContentStream(
         `${contextText}\n\n# User Prompt\n${userPrompt}`
@@ -109,6 +114,10 @@ export class GeminiClient {
         }
       }
     } catch (error) {
+      console.error('[gemini] Raw error:', error)
+      console.error('[gemini] Error type:', error?.constructor?.name)
+      console.error('[gemini] Error message:', (error as any)?.message)
+      console.error('[gemini] Error stack:', (error as any)?.stack)
       throw this.handleError(error, 'Failed to generate response')
     }
   }

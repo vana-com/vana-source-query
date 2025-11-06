@@ -1,23 +1,25 @@
 "use client"
 
 import { useState, useEffect, useRef } from 'react'
+import { useInView } from 'react-intersection-observer'
 import { Message, ChatStreamEvent } from '@/lib/types'
-import { saveConversation, loadConversation, deleteConversation } from '@/lib/chatDb'
+import { getConversation, saveMessages, deleteConversation } from '@/lib/chatDb'
 import { ChatMessage } from './ChatMessage'
 
 interface ChatProps {
   packedContext: string
-  packHash: string
+  conversationId: string | null // UUID of active conversation
   geminiApiKey?: string
   modelId: string
-  thinkingBudget: number
+  thinkingBudget?: number
+  onFirstMessage?: (messageContent: string) => void // Callback when first message is sent
 }
 
 /**
  * Main chat interface component
  * Handles message state, persistence, streaming, and user interactions
  */
-export function Chat({ packedContext, packHash, geminiApiKey, modelId, thinkingBudget }: ChatProps) {
+export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thinkingBudget, onFirstMessage }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -25,53 +27,64 @@ export function Chat({ packedContext, packHash, geminiApiKey, modelId, thinkingB
   const [isVisible, setIsVisible] = useState(true) // Auto-open by default
   const [showExportMenu, setShowExportMenu] = useState(false)
 
-  const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
-  const userHasScrolledRef = useRef(false)
   const streamingMessageIdRef = useRef<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const exportMenuRef = useRef<HTMLDivElement>(null)
 
-  // Load conversation from IndexedDB on mount
+  // Use Intersection Observer to track if bottom anchor is visible
+  const { ref: messagesEndRef, inView: isAtBottom } = useInView({
+    threshold: 0,
+    rootMargin: '0px 0px 100px 0px', // Trigger slightly before actual bottom
+  })
+
+  // Load conversation from IndexedDB when conversationId changes
   useEffect(() => {
+    if (!conversationId) {
+      setMessages([])
+      return
+    }
+
     async function loadConvo() {
-      const saved = await loadConversation(packHash)
-      if (saved && saved.length > 0) {
-        setMessages(saved)
+      const conversation = await getConversation(conversationId!)
+      if (conversation && conversation.messages.length > 0) {
+        setMessages(conversation.messages)
+      } else {
+        setMessages([])
       }
     }
     loadConvo()
-  }, [packHash])
+  }, [conversationId])
 
-  // Save conversation to IndexedDB whenever messages change
+  // Save messages to IndexedDB whenever they change
   useEffect(() => {
-    if (messages.length > 0) {
-      saveConversation(packHash, messages, packedContext.length)
+    if (conversationId && messages.length > 0) {
+      saveMessages(conversationId, messages)
     }
-  }, [messages, packHash, packedContext])
+  }, [messages, conversationId])
 
-  // Auto-scroll to bottom when messages change (but only if user hasn't manually scrolled)
-  useEffect(() => {
-    if (!userHasScrolledRef.current && streaming) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }
-  }, [messages, streaming])
-
-  // Detect manual scroll
+  // Auto-scroll when messages change if we're at bottom
   useEffect(() => {
     const container = messagesContainerRef.current
     if (!container) return
 
-    const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = container
-      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100
-      userHasScrolledRef.current = !isNearBottom
-    }
+    // Capture isAtBottom NOW, before any DOM updates
+    const shouldScroll = isAtBottom
+    console.log('[Chat] Message update, isAtBottom:', shouldScroll)
 
-    container.addEventListener('scroll', handleScroll)
-    return () => container.removeEventListener('scroll', handleScroll)
-  }, [])
+    if (shouldScroll) {
+      console.log('[Chat] Scrolling to bottom')
+
+      // Wait for DOM to update, then scroll
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight
+        console.log('[Chat] Scrolled to scrollTop:', container.scrollTop)
+      })
+    } else {
+      console.log('[Chat] User scrolled up, not auto-scrolling')
+    }
+  }, [messages, isAtBottom])
 
   // Auto-grow textarea
   useEffect(() => {
@@ -127,8 +140,16 @@ export function Chat({ packedContext, packHash, geminiApiKey, modelId, thinkingB
         updatedMessages = [...messages, userMsg]
       }
 
+      // Check if this is the first message (for auto-naming)
+      const isFirstMessage = messages.length === 0 && messageIndex === undefined
+
       setMessages(updatedMessages)
       setInput('')
+
+      // Notify parent component of first message for auto-naming
+      if (isFirstMessage && onFirstMessage) {
+        onFirstMessage(content.trim())
+      }
 
       // Add placeholder for model response
       const modelMsg: Message = {
@@ -218,7 +239,6 @@ export function Chat({ packedContext, packHash, geminiApiKey, modelId, thinkingB
               } else if (event.type === 'complete') {
                 setStreaming(false)
                 streamingMessageIdRef.current = null
-                userHasScrolledRef.current = false // Reset scroll lock
                 return
               }
             } catch (parseError) {
@@ -239,7 +259,6 @@ export function Chat({ packedContext, packHash, geminiApiKey, modelId, thinkingB
       setError(err instanceof Error ? err.message : 'Failed to send message')
       setStreaming(false)
       streamingMessageIdRef.current = null
-      userHasScrolledRef.current = false
     }
   }
 
@@ -271,33 +290,57 @@ export function Chat({ packedContext, packHash, geminiApiKey, modelId, thinkingB
   }
 
   const handleClear = async () => {
+    if (!conversationId) return
+
     if (
       window.confirm(
         'Clear this conversation? This action cannot be undone.'
       )
     ) {
       setMessages([])
-      await deleteConversation(packHash)
+      await deleteConversation(conversationId)
     }
   }
 
+  const formatFullExport = () => {
+    let export_text = `# Packed Repository Context\n\n${packedContext}\n\n`
+
+    if (messages.length > 0) {
+      export_text += `# Conversation History\n\n`
+      messages.forEach(msg => {
+        const role = msg.role === 'user' ? 'User' : 'Assistant'
+        export_text += `## ${role}\n\n${msg.content}\n\n`
+      })
+    }
+
+    return export_text
+  }
+
   const handleExportToAI = async (platform: string, url: string) => {
-    await navigator.clipboard.writeText(packedContext)
+    await navigator.clipboard.writeText(formatFullExport())
     setShowExportMenu(false)
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   const handleDownloadTxt = () => {
-    const blob = new Blob([packedContext], { type: 'text/plain' })
+    const blob = new Blob([formatFullExport()], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `packed-repos-${Date.now()}.txt`
+    a.download = `conversation-export-${Date.now()}.txt`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
     setShowExportMenu(false)
+  }
+
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      setStreaming(false)
+      setError('Streaming stopped by user')
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -407,27 +450,27 @@ export function Chat({ packedContext, packHash, geminiApiKey, modelId, thinkingB
           >
             <button
               onClick={() => handleExportToAI('AI Studio', 'https://aistudio.google.com/prompts/new_chat?model=gemini-2.5-pro')}
-              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer flex items-center gap-2"
+              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer"
             >
-              <span>✨</span> Copy for AI Studio
+              Copy for AI Studio
             </button>
             <button
               onClick={() => handleExportToAI('Gemini', 'https://gemini.google.com/app')}
-              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer flex items-center gap-2"
+              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer"
             >
-              <span>💎</span> Copy for Gemini
+              Copy for Gemini
             </button>
             <button
               onClick={() => handleExportToAI('Claude', 'https://claude.ai/new')}
-              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer flex items-center gap-2"
+              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer"
             >
-              <span>🤖</span> Copy for Claude
+              Copy for Claude
             </button>
             <button
               onClick={() => handleExportToAI('ChatGPT', 'https://chatgpt.com')}
-              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer flex items-center gap-2"
+              className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800 transition cursor-pointer"
             >
-              <span>🟢</span> Copy for ChatGPT
+              Copy for ChatGPT
             </button>
             <div className="border-t border-neutral-800 my-1" />
             <button
@@ -439,14 +482,14 @@ export function Chat({ packedContext, packHash, geminiApiKey, modelId, thinkingB
           </div>
         )}
 
-        {/* Plus Button */}
+        {/* Export Button */}
         <button
           onClick={() => setShowExportMenu(!showExportMenu)}
           className="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-neutral-400 hover:text-neutral-200 transition cursor-pointer"
           title="Export options"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
           </svg>
         </button>
 
@@ -461,29 +504,18 @@ export function Chat({ packedContext, packHash, geminiApiKey, modelId, thinkingB
           disabled={streaming}
         />
         <button
-          onClick={() => sendMessage(input)}
-          disabled={streaming || !input.trim()}
+          onClick={streaming ? handleStop : () => sendMessage(input)}
+          disabled={!streaming && !input.trim()}
           className="absolute top-1/2 -translate-y-1/2 right-3 p-2 rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer"
+          title={streaming ? "Stop generation" : "Send message"}
         >
           {streaming ? (
             <svg
-              className="w-4 h-4 animate-spin"
-              fill="none"
+              className="w-4 h-4"
+              fill="currentColor"
               viewBox="0 0 24 24"
             >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              />
+              <rect x="6" y="6" width="12" height="12" />
             </svg>
           ) : (
             <svg

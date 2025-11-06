@@ -38,14 +38,39 @@ export async function GET(request: NextRequest) {
       ?.filter((model: any) =>
         model.supportedGenerationMethods?.includes('generateContent')
       )
-      .map((model: any) => ({
-        name: model.baseModelId || model.name.replace('models/', ''), // Use baseModelId for SDK calls
-        displayName: model.displayName || model.name.replace('models/', ''),
-        description: model.description,
-        inputTokenLimit: model.inputTokenLimit,
-        outputTokenLimit: model.outputTokenLimit,
-        supportedGenerationMethods: model.supportedGenerationMethods,
-      })) || []
+      .map((model: any) => {
+        const modelName = model.baseModelId || model.name.replace('models/', '')
+        const supportsThinking = !!model.thinking
+
+        // Determine thinking budget limits based on model name
+        // NOTE: Google API doesn't provide these limits, so we infer from naming patterns
+        // If new model families are released, update these patterns
+        let maxThinkingBudget: number | undefined
+        if (supportsThinking) {
+          if (modelName.includes('flash-lite')) {
+            maxThinkingBudget = 24576 // Flash-Lite: 512-24576
+          } else if (modelName.includes('pro')) {
+            maxThinkingBudget = 32768 // Pro: 128-32768
+          } else if (modelName.includes('flash')) {
+            maxThinkingBudget = 24576 // Flash: 0-24576
+          } else {
+            // Fallback for unknown model families: use Flash limits (safest/most common)
+            maxThinkingBudget = 24576
+            console.warn('[api/gemini/models] Unknown model pattern:', modelName, '- using Flash limits (24576)')
+          }
+        }
+
+        return {
+          name: modelName,
+          displayName: model.displayName || modelName,
+          description: model.description,
+          inputTokenLimit: model.inputTokenLimit,
+          outputTokenLimit: model.outputTokenLimit,
+          supportedGenerationMethods: model.supportedGenerationMethods,
+          supportsThinking,
+          maxThinkingBudget,
+        }
+      }) || []
 
     return Response.json({ models })
   } catch (error) {

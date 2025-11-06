@@ -73,17 +73,27 @@ export function ChatMessage({
                 </div>
               </div>
             ) : (
-              <div className="group text-right">
+              <div className="text-right">
                 <div className="inline-block text-left bg-brand-600/20 rounded-2xl px-4 py-2.5 text-sm text-neutral-200 whitespace-pre-wrap">
                   {message.content}
                 </div>
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="mt-2 text-xs text-neutral-500 hover:text-neutral-300 transition opacity-0 group-hover:opacity-100 cursor-pointer"
-                  disabled={isStreaming}
-                >
-                  ✏️ Edit
-                </button>
+                <div className="flex justify-end gap-3 mt-3">
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="text-xs text-neutral-500 hover:text-neutral-300 transition flex items-center gap-1 cursor-pointer"
+                    disabled={isStreaming}
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                      />
+                    </svg>
+                    Edit
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -103,8 +113,28 @@ export function ChatMessage({
           G
         </div>
         <div className="flex-1 min-w-0 overflow-hidden">
-          <div className="overflow-hidden">
-            <MarkdownRenderer content={message.content} />
+          {isEditing ? (
+            <div>
+              <div className="text-xs text-neutral-400 mb-2">Edit the previous message and regenerate:</div>
+              <textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                className="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                rows={3}
+                autoFocus
+              />
+              <div className="flex gap-2 mt-2">
+                <button onClick={handleSaveEdit} className="btn-primary text-xs cursor-pointer">
+                  Save & Regenerate
+                </button>
+                <button onClick={handleCancelEdit} className="btn-secondary text-xs cursor-pointer">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="overflow-hidden">
+              <MarkdownRenderer content={message.content} />
 
             {isStreaming && isLastMessage && (
               <div className="mt-2 flex items-center gap-2 text-xs text-neutral-500">
@@ -145,6 +175,27 @@ export function ChatMessage({
                 )}
               </button>
 
+              {previousMessage && previousMessage.role === 'user' && (
+                <button
+                  onClick={() => {
+                    setEditContent(previousMessage.content)
+                    setIsEditing(true)
+                  }}
+                  className="text-xs text-neutral-500 hover:text-neutral-300 transition flex items-center gap-1 cursor-pointer"
+                  disabled={isStreaming}
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                    />
+                  </svg>
+                  Edit
+                </button>
+              )}
+
               <button
                 onClick={onRetry}
                 className="text-xs text-neutral-500 hover:text-neutral-300 transition flex items-center gap-1 cursor-pointer"
@@ -158,10 +209,11 @@ export function ChatMessage({
                     d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                   />
                 </svg>
-                Retry
+                Regenerate
               </button>
             </div>
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

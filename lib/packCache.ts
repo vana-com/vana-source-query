@@ -346,3 +346,42 @@ export async function purgeStaleEntries(): Promise<number> {
     return 0
   }
 }
+
+/**
+ * Get all repo names that have cached entries
+ * Returns Set of repo full names for quick lookup
+ */
+export async function getCachedRepoNames(): Promise<Set<string>> {
+  try {
+    const db = await initPackCache()
+    const allEntries = await db.getAll(CACHE_CONFIG.storeName)
+    const repoNames = new Set(allEntries.map(entry => entry.repoFullName))
+    return repoNames
+  } catch (error) {
+    console.error('Failed to get cached repo names:', error)
+    return new Set()
+  }
+}
+
+/**
+ * Get cached repo+branch combinations
+ * Returns Map of "fullName:branch" -> true for quick lookup
+ * More accurate than getCachedRepoNames() as it considers branches
+ */
+export async function getCachedRepoBranches(): Promise<Map<string, boolean>> {
+  try {
+    const db = await initPackCache()
+    const allEntries = await db.getAll(CACHE_CONFIG.storeName)
+    const repoBranchMap = new Map<string, boolean>()
+
+    for (const entry of allEntries) {
+      const key = `${entry.repoFullName}:${entry.branch}`
+      repoBranchMap.set(key, true)
+    }
+
+    return repoBranchMap
+  } catch (error) {
+    console.error('Failed to get cached repo branches:', error)
+    return new Map()
+  }
+}

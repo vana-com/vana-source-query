@@ -192,6 +192,15 @@ export interface ChatStreamEvent {
   error?: string
 }
 
+export interface Conversation {
+  id: string // UUID
+  name: string // User-editable
+  messages: Message[]
+  createdAt: number
+  lastUpdatedAt: number
+}
+
+// Legacy - kept for migration reference
 export interface ConversationRecord {
   packHash: string
   messages: Message[]

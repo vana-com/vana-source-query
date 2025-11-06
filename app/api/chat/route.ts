@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
     }
 
     const model = modelId || config.gemini.defaultModel
+    console.log('[api/chat] Using model:', model, 'with thinking budget:', thinkingBudget)
 
     // Create client
     const client = createGeminiClient(apiKey)
