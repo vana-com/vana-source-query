@@ -38,10 +38,17 @@ export async function POST(request: NextRequest) {
     // Fetch SHAs in parallel
     const shaPromises = repos.map(async (repo) => {
       try {
-        const sha = await client.fetchCurrentCommitSHA(repo.fullName, repo.branch)
+        // If branch not specified, fetch repo metadata to get default branch
+        let branchToUse = repo.branch
+        if (!branchToUse) {
+          const metadata = await client.getRepoMetadata(repo.fullName)
+          branchToUse = metadata.defaultBranch
+        }
+
+        const sha = await client.fetchCurrentCommitSHA(repo.fullName, branchToUse)
         return {
           fullName: repo.fullName,
-          branch: repo.branch,
+          branch: branchToUse,
           sha,
           error: null,
         }
