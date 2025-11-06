@@ -819,22 +819,80 @@ export default function Home() {
         !repos.some((orgRepo) => orgRepo.fullName === extRepo.fullName)
     ),
   ];
+  // Semantic search scoring
+  const calculateRelevanceScore = (repo: GitHubRepo, query: string): number => {
+    if (!query) return 0;
+
+    const queryLower = query.toLowerCase();
+    const nameLower = repo.name.toLowerCase();
+    const fullNameLower = repo.fullName.toLowerCase();
+    const descLower = (repo.description || '').toLowerCase();
+
+    // Tokenize query into words
+    const queryWords = queryLower.split(/\s+/).filter(w => w.length > 0);
+
+    let score = 0;
+
+    // Exact matches (highest priority)
+    if (nameLower === queryLower) score += 100;
+    if (fullNameLower === queryLower) score += 90;
+
+    // Full query substring matches
+    if (nameLower.includes(queryLower)) score += 50;
+    if (fullNameLower.includes(queryLower)) score += 40;
+    if (descLower.includes(queryLower)) score += 30;
+
+    // Individual word matches (semantic-like behavior)
+    queryWords.forEach(word => {
+      // Name word matches
+      if (nameLower.includes(word)) score += 20;
+      // Full name word matches
+      if (fullNameLower.includes(word)) score += 15;
+      // Description word matches
+      if (descLower.includes(word)) score += 10;
+
+      // Word boundary matches (higher relevance)
+      const wordBoundaryRegex = new RegExp(`\\b${word}`, 'i');
+      if (wordBoundaryRegex.test(repo.name)) score += 10;
+      if (wordBoundaryRegex.test(repo.fullName)) score += 8;
+      if (repo.description && wordBoundaryRegex.test(repo.description)) score += 5;
+    });
+
+    // Bonus for matching multiple words
+    const matchingWords = queryWords.filter(word =>
+      nameLower.includes(word) || fullNameLower.includes(word) || descLower.includes(word)
+    );
+    if (matchingWords.length > 1) {
+      score += matchingWords.length * 5;
+    }
+
+    return score;
+  };
+
   const filteredRepos = allRepos
-    .filter(
-      (repo) =>
-        repoFilter === "" ||
-        repo.name.toLowerCase().includes(repoFilter.toLowerCase()) ||
-        repo.fullName.toLowerCase().includes(repoFilter.toLowerCase())
-    )
+    .map(repo => ({
+      repo,
+      relevanceScore: repoFilter ? calculateRelevanceScore(repo, repoFilter) : 0
+    }))
+    .filter(({ relevanceScore }) => repoFilter === "" || relevanceScore > 0)
     .sort((a, b) => {
       // Sort selected repos to top
-      const aSelected = selectedRepos.has(a.fullName);
-      const bSelected = selectedRepos.has(b.fullName);
+      const aSelected = selectedRepos.has(a.repo.fullName);
+      const bSelected = selectedRepos.has(b.repo.fullName);
       if (aSelected && !bSelected) return -1;
       if (!aSelected && bSelected) return 1;
+
+      // If searching, sort by relevance score
+      if (repoFilter) {
+        if (b.relevanceScore !== a.relevanceScore) {
+          return b.relevanceScore - a.relevanceScore;
+        }
+      }
+
       // Then sort by push date
-      return new Date(b.pushedAt).getTime() - new Date(a.pushedAt).getTime();
-    });
+      return new Date(b.repo.pushedAt).getTime() - new Date(a.repo.pushedAt).getTime();
+    })
+    .map(({ repo }) => repo);
 
   // Render
   return (
