@@ -81,7 +81,7 @@ export async function checkPackCache(
 
       const lookupResult = await lookupCache(
         repo.fullName,
-        repo.branch,
+        shaInfo.branch, // Use resolved branch from SHA fetch, not original (might be undefined)
         shaInfo.sha,
         sliceConfig
       )
