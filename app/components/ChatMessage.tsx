@@ -113,7 +113,7 @@ export function ChatMessage({
               </div>
             )}
 
-            <div className="flex gap-3 mt-3 pt-3 border-t border-neutral-800/50">
+            <div className="flex gap-3 mt-3">
               <button
                 onClick={handleCopy}
                 className="text-xs text-neutral-500 hover:text-neutral-300 transition flex items-center gap-1 cursor-pointer"

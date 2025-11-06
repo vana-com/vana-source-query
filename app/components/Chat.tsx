@@ -27,6 +27,7 @@ export function Chat({ packedContext, packHash, geminiApiKey }: ChatProps) {
   const abortControllerRef = useRef<AbortController | null>(null)
   const userHasScrolledRef = useRef(false)
   const streamingMessageIdRef = useRef<string | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Load conversation from IndexedDB on mount
   useEffect(() => {
@@ -67,6 +68,15 @@ export function Chat({ packedContext, packHash, geminiApiKey }: ChatProps) {
     container.addEventListener('scroll', handleScroll)
     return () => container.removeEventListener('scroll', handleScroll)
   }, [])
+
+  // Auto-grow textarea
+  useEffect(() => {
+    const textarea = textareaRef.current
+    if (textarea) {
+      textarea.style.height = 'auto'
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`
+    }
+  }, [input])
 
   // Stream a message from Gemini
   const sendMessage = async (content: string, messageIndex?: number) => {
@@ -264,23 +274,14 @@ export function Chat({ packedContext, packHash, geminiApiKey }: ChatProps) {
 
   return (
     <div className="mb-8 flex flex-col h-[calc(100vh-16rem)]">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-lg font-semibold text-neutral-100">Chat</h3>
-        <div className="flex gap-2">
-          {messages.length > 0 && (
-            <button onClick={handleClear} className="text-xs text-neutral-500 hover:text-neutral-300 transition cursor-pointer">
-              Clear
-            </button>
-          )}
-          <button
-            onClick={() => setIsVisible(false)}
-            className="text-xs text-neutral-500 hover:text-neutral-300 transition cursor-pointer"
-          >
-            ✕ Hide
+      {/* Header with Clear button only */}
+      {messages.length > 0 && (
+        <div className="flex items-center justify-end mb-4">
+          <button onClick={handleClear} className="text-xs text-neutral-500 hover:text-neutral-300 transition cursor-pointer">
+            Clear conversation
           </button>
         </div>
-      </div>
+      )}
 
       {/* Error banner */}
       {error && (
@@ -315,21 +316,23 @@ export function Chat({ packedContext, packHash, geminiApiKey }: ChatProps) {
       {/* Messages - Flex-grow and scroll */}
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto mb-4">
         {messages.length === 0 ? (
-          <div className="text-center py-12 text-neutral-500">
-            <svg
-              className="w-12 h-12 mx-auto mb-3 text-neutral-700"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
-              />
-            </svg>
-            <p className="text-sm">Ask questions about your packed repositories</p>
+          <div className="h-full flex items-center justify-center text-neutral-500">
+            <div className="text-center">
+              <svg
+                className="w-12 h-12 mx-auto mb-3 text-neutral-700"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                />
+              </svg>
+              <p className="text-sm">Ask questions about your packed repositories</p>
+            </div>
           </div>
         ) : (
           <>
@@ -353,18 +356,19 @@ export function Chat({ packedContext, packHash, geminiApiKey }: ChatProps) {
       {/* Input - Sticky at bottom */}
       <div className="flex-shrink-0 relative bg-neutral-950 pt-3 border-t border-neutral-800">
         <textarea
+          ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask a question... (Press Enter to send, Shift+Enter for new line)"
-          className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 pr-12 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none"
-          rows={3}
+          placeholder="Message Gemini"
+          className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-3 pr-12 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500 resize-none overflow-hidden"
+          rows={1}
           disabled={streaming}
         />
         <button
           onClick={() => sendMessage(input)}
           disabled={streaming || !input.trim()}
-          className="absolute bottom-6 right-3 p-2 rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer"
+          className="absolute bottom-5 right-3 p-2 rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer"
         >
           {streaming ? (
             <svg

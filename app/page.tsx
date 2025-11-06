@@ -489,122 +489,129 @@ export default function Home() {
         repo.name.toLowerCase().includes(repoFilter.toLowerCase()) ||
         repo.fullName.toLowerCase().includes(repoFilter.toLowerCase())
     )
-    .sort((a, b) => new Date(b.pushedAt).getTime() - new Date(a.pushedAt).getTime());
+    .sort((a, b) => {
+      // Sort selected repos to top
+      const aSelected = selectedRepos.has(a.fullName);
+      const bSelected = selectedRepos.has(b.fullName);
+      if (aSelected && !bSelected) return -1;
+      if (!aSelected && bSelected) return 1;
+      // Then sort by push date
+      return new Date(b.pushedAt).getTime() - new Date(a.pushedAt).getTime();
+    });
 
   // Render
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100">
-      {/* Header */}
-      <header className="border-b border-neutral-800">
-        <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex items-center gap-3">
-            <Image
-              src="/icon-no-bg.png"
-              alt="Vana Logo"
-              width={56}
-              height={56}
-            />
-            <div>
-              <h1 className="text-2xl font-bold">Vana Source Query</h1>
-              <p className="mt-0.5 text-sm text-neutral-400">
-                Load → Select → Configure → Pack → Copy
-              </p>
-            </div>
-          </div>
-        </div>
-      </header>
-
       {/* Two-pane layout */}
       <div className="flex">
         <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] w-full max-w-[1600px] mx-auto">
           {/* Left Sidebar - Flush to edge */}
           <aside className="border-r border-neutral-800 lg:sticky lg:top-0 lg:h-screen flex flex-col">
-            {/* Token Meter - Top of sidebar */}
-            {packResult && tokenResult && (
-              <div className="flex-shrink-0 p-6 border-b border-neutral-800">
-                <div
-                  className="w-full h-1.5 bg-neutral-900 rounded-full overflow-hidden mb-2"
-                  role="progressbar"
-                  aria-valuenow={tokenResult.totalTokens}
-                  aria-valuemin={0}
-                  aria-valuemax={tokenResult.modelLimit}
-                  aria-label={`${tokenResult.totalTokens.toLocaleString()} of ${tokenResult.modelLimit.toLocaleString()} tokens used`}
-                >
-                  <div
-                    className={`h-full transition-all duration-500 ${
-                      tokenResult.status === "over"
-                        ? "bg-danger"
-                        : tokenResult.status === "near"
-                        ? "bg-warn"
-                        : "bg-ok"
-                    }`}
-                    style={{
-                      width: `${Math.min(
-                        (tokenResult.totalTokens / tokenResult.modelLimit) *
-                          100,
-                        100
-                      )}%`,
-                    }}
-                  />
+            {/* Compact Header + Token Meter */}
+            <div className="flex-shrink-0 p-4 border-b border-neutral-800">
+              {/* Logo + Title */}
+              <div className="flex items-center gap-2 mb-3">
+                <Image
+                  src="/icon-no-bg.png"
+                  alt="Vana Logo"
+                  width={32}
+                  height={32}
+                />
+                <div className="flex-1 min-w-0">
+                  <h1 className="text-base font-bold truncate">Vana Source Query</h1>
+                  <p className="text-[10px] text-neutral-500">
+                    Load → Select → Pack → Copy
+                  </p>
                 </div>
-                <div className="flex items-center justify-between text-xs text-neutral-500">
-                  <span className="flex items-center gap-2">
-                    {packResult.repos.reduce(
-                      (sum, r) => sum + r.stats.fileCount,
-                      0
-                    )}{" "}
-                    files •{" "}
-                    {countingTokens ? (
-                      <span className="flex items-center gap-1.5 text-neutral-400">
-                        <Spinner size="sm" />
-                        Counting...
-                      </span>
-                    ) : (
-                      <>
-                        {tokenResult.totalTokens.toLocaleString()} /{" "}
-                        {(tokenResult.modelLimit / 1000000).toFixed(1)}M
-                        tokens
-                      </>
-                    )}
-                  </span>
-                  <span>
-                    {config.gemini.models[config.gemini.defaultModel]
-                      ?.name || "Gemini 2.5 Flash"}
-                  </span>
-                </div>
-
-                {tokenCountError && (
-                  <div className="mt-3 flex items-start gap-2 text-xs text-warn">
-                    <svg
-                      className="w-4 h-4 flex-shrink-0 mt-0.5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                      />
-                    </svg>
-                    <div className="flex-1">
-                      <span>
-                        {tokenCountError}{" "}
-                        <button
-                          onClick={() =>
-                            packResult && handleCountTokens(packResult)
-                          }
-                          className="underline hover:text-warn/80 transition cursor-pointer"
-                        >
-                          Retry
-                        </button>
-                      </span>
-                    </div>
-                  </div>
-                )}
               </div>
-            )}
+
+              {/* Token Meter (when available) */}
+              {packResult && tokenResult && (
+                <>
+                  <div
+                    className="w-full h-1.5 bg-neutral-900 rounded-full overflow-hidden mb-2"
+                    role="progressbar"
+                    aria-valuenow={tokenResult.totalTokens}
+                    aria-valuemin={0}
+                    aria-valuemax={tokenResult.modelLimit}
+                    aria-label={`${tokenResult.totalTokens.toLocaleString()} of ${tokenResult.modelLimit.toLocaleString()} tokens used`}
+                  >
+                    <div
+                      className={`h-full transition-all duration-500 ${
+                        tokenResult.status === "over"
+                          ? "bg-danger"
+                          : tokenResult.status === "near"
+                          ? "bg-warn"
+                          : "bg-ok"
+                      }`}
+                      style={{
+                        width: `${Math.min(
+                          (tokenResult.totalTokens / tokenResult.modelLimit) *
+                            100,
+                          100
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-neutral-500">
+                    <span className="flex items-center gap-1.5">
+                      {packResult.repos.reduce(
+                        (sum, r) => sum + r.stats.fileCount,
+                        0
+                      )}{" "}
+                      files •{" "}
+                      {countingTokens ? (
+                        <span className="flex items-center gap-1 text-neutral-400">
+                          <Spinner size="sm" />
+                          Counting...
+                        </span>
+                      ) : (
+                        <>
+                          {tokenResult.totalTokens.toLocaleString()} /{" "}
+                          {(tokenResult.modelLimit / 1000000).toFixed(1)}M
+                          tokens
+                        </>
+                      )}
+                    </span>
+                    <span title={config.gemini.models[config.gemini.defaultModel]?.name || "Gemini 2.5 Flash"}>
+                      {config.gemini.models[config.gemini.defaultModel]
+                        ?.name || "Gemini 2.5 Flash"}
+                    </span>
+                  </div>
+
+                  {tokenCountError && (
+                    <div className="mt-2 flex items-start gap-2 text-[10px] text-warn">
+                      <svg
+                        className="w-3 h-3 flex-shrink-0 mt-0.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                        />
+                      </svg>
+                      <div className="flex-1">
+                        <span>
+                          {tokenCountError}{" "}
+                          <button
+                            onClick={() =>
+                              packResult && handleCountTokens(packResult)
+                            }
+                            className="underline hover:text-warn/80 transition cursor-pointer"
+                          >
+                            Retry
+                          </button>
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
 
             {/* Repositories Section - Scrollable */}
             <div className="flex-shrink-0 p-6 border-b border-neutral-800">
@@ -657,78 +664,17 @@ export default function Home() {
                   className="input mb-4"
                 />
 
-                {/* Selected chips tray */}
-                <div className="mb-4">
-                  {selectedRepos.size > 0 && (
-                    <div className="p-3 bg-neutral-900 rounded-xl border border-neutral-800">
-                      <div className="text-xs text-neutral-400 mb-2">
-                        Selected ({selectedRepos.size})
-                      </div>
-                      <div className="space-y-2">
-                        {Array.from(selectedRepos).map((fullName) => {
-                          // Check both org repos and external repos
-                          const repo = repos.find(
-                            (r) => r.fullName === fullName
-                          ) || addedExternalRepos.get(fullName);
-                          if (!repo) return null;
-                          const currentBranch =
-                            repoBranches[fullName] || repo.defaultBranch;
-                          return (
-                            <div
-                              key={fullName}
-                              className="flex items-center gap-2"
-                            >
-                              <span className="text-xs text-neutral-300 truncate flex-1">
-                                {repo.name}
-                              </span>
-                              <input
-                                type="text"
-                                value={currentBranch}
-                                onChange={(e) => {
-                                  setRepoBranches({
-                                    ...repoBranches,
-                                    [fullName]: e.target.value,
-                                  });
-                                }}
-                                onBlur={handleTextBlur}
-                                placeholder={repo.defaultBranch}
-                                className="w-24 px-2 py-0.5 text-xs rounded border border-neutral-700 bg-neutral-800 text-neutral-200 placeholder-neutral-500 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                              />
-                              <button
-                                onClick={() => {
-                                  const newSet = new Set(selectedRepos);
-                                  newSet.delete(fullName);
-                                  setSelectedRepos(newSet);
-                                }}
-                                className="flex-shrink-0 p-1 text-neutral-400 hover:text-neutral-200 transition"
-                                aria-label="Remove"
-                              >
-                                <svg
-                                  className="w-3 h-3"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  stroke="currentColor"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M6 18L18 6M6 6l12 12"
-                                  />
-                                </svg>
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
                 {/* Count */}
-                <div className="mb-3 text-xs text-neutral-500">
-                  {filteredRepos.length}{" "}
-                  {filteredRepos.length === 1 ? "repository" : "repositories"}
+                <div className="mb-3 flex items-center justify-between text-xs text-neutral-500">
+                  <span>
+                    {filteredRepos.length}{" "}
+                    {filteredRepos.length === 1 ? "repository" : "repositories"}
+                  </span>
+                  {selectedRepos.size > 0 && (
+                    <span className="text-brand-500">
+                      {selectedRepos.size} selected
+                    </span>
+                  )}
                 </div>
 
                 {/* External Repo Validation (when search contains / and not already available) */}
@@ -834,7 +780,7 @@ export default function Home() {
 
                 {/* Repo List - Scrollable */}
                 {filteredRepos.length > 0 ? (
-                  <div className="border-t border-neutral-900 max-h-[40vh] overflow-y-auto">
+                  <div className="border-t border-neutral-900 max-h-[25vh] overflow-y-auto">
                     {filteredRepos.map((repo) => {
                       const isSelected = selectedRepos.has(repo.fullName);
                       return (
@@ -890,6 +836,25 @@ export default function Home() {
                               <div className="mt-0.5 text-xs text-neutral-500 truncate">
                                 Updated {formatRelativeTime(repo.pushedAt)}
                               </div>
+                              {/* Branch input for selected repos */}
+                              {isSelected && (
+                                <div className="mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                  <span className="text-[10px] text-neutral-500">Branch:</span>
+                                  <input
+                                    type="text"
+                                    value={repoBranches[repo.fullName] || repo.defaultBranch}
+                                    onChange={(e) => {
+                                      setRepoBranches({
+                                        ...repoBranches,
+                                        [repo.fullName]: e.target.value,
+                                      });
+                                    }}
+                                    onBlur={handleTextBlur}
+                                    placeholder={repo.defaultBranch}
+                                    className="flex-1 px-2 py-0.5 text-xs rounded border border-neutral-700 bg-neutral-800 text-neutral-200 placeholder-neutral-500 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                                  />
+                                </div>
+                              )}
                             </div>
 
                             {/* GitHub link button */}
@@ -1082,7 +1047,7 @@ export default function Home() {
 
             {/* Directory Structure */}
             {packResult && (
-              <div className="mt-8 pt-8 border-t border-neutral-800">
+              <div className="mt-6">
                 <h3 className="text-sm font-semibold mb-4 text-neutral-100">
                   Directory Structure
                 </h3>
