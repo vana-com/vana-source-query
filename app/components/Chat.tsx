@@ -369,7 +369,7 @@ export function Chat({ packedContext, packHash, geminiApiKey }: ChatProps) {
               <p className="text-sm">
                 {packedContext
                   ? "Ask questions about your packed repositories"
-                  : "Selected repositories will be packed automatically. Ask me anything while you wait!"
+                  : "Select repositories from the sidebar to get started. Or ask me anything!"
                 }
               </p>
             </div>

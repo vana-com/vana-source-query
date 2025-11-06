@@ -161,7 +161,7 @@ export default function Home() {
   // Generate pack hash for chat persistence (updates whenever config changes)
   useEffect(() => {
     if (selectedRepos.size === 0) {
-      setPackHash(null);
+      setPackHash('default-conversation');
       return;
     }
 
