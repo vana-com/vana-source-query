@@ -1269,10 +1269,11 @@ export default function Home() {
             )}
 
                 {/* Chat Interface - Main CTA */}
-                {packHash && (
+                {selectedRepos.size > 0 && (
                   <Chat
-                    packedContext={getCompleteContext()}
+                    packedContext={packResult ? getCompleteContext() : null}
                     packHash={packHash}
+                    isContextLoading={loading}
                   />
                 )}
 
