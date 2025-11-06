@@ -115,6 +115,40 @@ export interface AppConfig {
 }
 
 // ============================================================================
+// Chat Types
+// ============================================================================
+
+export interface Message {
+  id: string
+  role: 'user' | 'model'
+  content: string
+  timestamp: number
+}
+
+export interface ChatRequest {
+  contextText: string
+  userMessage: string
+  conversationHistory?: Array<{
+    role: 'user' | 'model'
+    content: string
+  }>
+  modelId?: string
+}
+
+export interface ChatStreamEvent {
+  type: 'chunk' | 'complete' | 'error'
+  text?: string
+  error?: string
+}
+
+export interface ConversationRecord {
+  packHash: string
+  messages: Message[]
+  lastUpdated: number
+  contextSize: number
+}
+
+// ============================================================================
 // Helpers
 // ============================================================================
 

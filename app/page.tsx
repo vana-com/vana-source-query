@@ -12,6 +12,8 @@ import { config } from "@/lib/config";
 import { loadCache, saveCache } from "@/lib/cache";
 import { Spinner } from "@/app/components/Spinner";
 import { assemblePackedContext } from "@/lib/assembly";
+import { Chat } from "@/app/components/Chat";
+import { generatePackHash } from "@/lib/packHash";
 
 export default function Home() {
   // State - initialize with defaults, load from cache after mount
@@ -42,6 +44,7 @@ export default function Home() {
   const [userPrompt, setUserPrompt] = useState("");
   const [copiedMessage, setCopiedMessage] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [packHash, setPackHash] = useState<string | null>(null);
 
   // Track last packed state to avoid unnecessary repacks
   const [lastPackedState, setLastPackedState] = useState<string | null>(null);
@@ -166,6 +169,7 @@ export default function Home() {
       // Clear results if nothing selected
       setPackResult(null);
       setTokenResult(null);
+      setPackHash(null);
       setLastPackedState(null);
       setLoading(false);
       return;
@@ -332,6 +336,10 @@ export default function Home() {
       }
 
       setPackResult(json.data);
+
+      // Generate pack hash for chat persistence
+      const hash = generatePackHash(repoSelections, sliceConfig);
+      setPackHash(hash);
 
       // Auto-count tokens with Gemini (will update the estimate)
       if (!abortController.signal.aborted) {
@@ -507,13 +515,109 @@ export default function Home() {
       </header>
 
       {/* Two-pane layout */}
-      <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-8">
-          {/* Left Pane: Repo Picker */}
-          <aside className="max-h-[60vh] lg:max-h-none lg:sticky lg:top-8 lg:h-[calc(100vh-8rem)] overflow-auto px-2">
-            <h2 className="text-lg font-semibold mb-6 text-neutral-100">
-              Repositories
-            </h2>
+      <div className="flex">
+        <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] w-full max-w-[1600px] mx-auto">
+          {/* Left Sidebar - Flush to edge */}
+          <aside className="border-r border-neutral-800 lg:sticky lg:top-0 lg:h-screen flex flex-col">
+            {/* Token Meter - Top of sidebar */}
+            {packResult && tokenResult && (
+              <div className="flex-shrink-0 p-6 border-b border-neutral-800">
+                <div
+                  className="w-full h-1.5 bg-neutral-900 rounded-full overflow-hidden mb-2"
+                  role="progressbar"
+                  aria-valuenow={tokenResult.totalTokens}
+                  aria-valuemin={0}
+                  aria-valuemax={tokenResult.modelLimit}
+                  aria-label={`${tokenResult.totalTokens.toLocaleString()} of ${tokenResult.modelLimit.toLocaleString()} tokens used`}
+                >
+                  <div
+                    className={`h-full transition-all duration-500 ${
+                      tokenResult.status === "over"
+                        ? "bg-danger"
+                        : tokenResult.status === "near"
+                        ? "bg-warn"
+                        : "bg-ok"
+                    }`}
+                    style={{
+                      width: `${Math.min(
+                        (tokenResult.totalTokens / tokenResult.modelLimit) *
+                          100,
+                        100
+                      )}%`,
+                    }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-xs text-neutral-500">
+                  <span className="flex items-center gap-2">
+                    {packResult.repos.reduce(
+                      (sum, r) => sum + r.stats.fileCount,
+                      0
+                    )}{" "}
+                    files •{" "}
+                    {countingTokens ? (
+                      <span className="flex items-center gap-1.5 text-neutral-400">
+                        <Spinner size="sm" />
+                        Counting...
+                      </span>
+                    ) : (
+                      <>
+                        {tokenResult.totalTokens.toLocaleString()} /{" "}
+                        {(tokenResult.modelLimit / 1000000).toFixed(1)}M
+                        tokens
+                      </>
+                    )}
+                  </span>
+                  <span>
+                    {config.gemini.models[config.gemini.defaultModel]
+                      ?.name || "Gemini 2.5 Flash"}
+                  </span>
+                </div>
+
+                {tokenCountError && (
+                  <div className="mt-3 flex items-start gap-2 text-xs text-warn">
+                    <svg
+                      className="w-4 h-4 flex-shrink-0 mt-0.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
+                    </svg>
+                    <div className="flex-1">
+                      <span>
+                        {tokenCountError}{" "}
+                        <button
+                          onClick={() =>
+                            packResult && handleCountTokens(packResult)
+                          }
+                          className="underline hover:text-warn/80 transition cursor-pointer"
+                        >
+                          Retry
+                        </button>
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Repositories Section - Scrollable */}
+            <div className="flex-shrink-0 p-6 border-b border-neutral-800">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-semibold text-neutral-100">
+                  Repositories
+                </h2>
+                {repos.length > 0 && (
+                  <span className="text-xs text-neutral-500">
+                    {filteredRepos.length} {filteredRepos.length !== repos.length && `of ${repos.length}`}
+                  </span>
+                )}
+              </div>
 
             {loading && repos.length === 0 ? (
               <div className="text-center py-12 text-neutral-400">
@@ -728,9 +832,9 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Repo List */}
+                {/* Repo List - Scrollable */}
                 {filteredRepos.length > 0 ? (
-                  <div className="border-t border-neutral-900">
+                  <div className="border-t border-neutral-900 max-h-[40vh] overflow-y-auto">
                     {filteredRepos.map((repo) => {
                       const isSelected = selectedRepos.has(repo.fullName);
                       return (
@@ -820,10 +924,222 @@ export default function Home() {
                 )}
               </>
             ) : null}
+            </div>
+
+            {/* Settings Section - Always Visible */}
+            <div className="flex-1 overflow-y-auto p-6">
+            {/* Advanced Filters */}
+            <div className="mb-8">
+              <h3 className="text-sm font-semibold mb-4 text-neutral-100">
+                Advanced Filters
+              </h3>
+              <div className="space-y-4">
+                {/* Include globs */}
+                <div>
+                  <label className="block text-xs font-medium mb-1.5 text-neutral-200">
+                    Include globs
+                  </label>
+                  <input
+                    type="text"
+                    value={includeGlobs}
+                    onChange={(e) => setIncludeGlobs(e.target.value)}
+                    onBlur={handleTextBlur}
+                    placeholder="**/*.ts, src/**"
+                    className="input text-xs"
+                  />
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Comma-separated. Leave empty for all.
+                  </p>
+                </div>
+
+                {/* Ignore globs */}
+                <div>
+                  <label className="block text-xs font-medium mb-1.5 text-neutral-200">
+                    Ignore globs
+                  </label>
+                  <input
+                    type="text"
+                    value={ignoreGlobs}
+                    onChange={(e) => setIgnoreGlobs(e.target.value)}
+                    onBlur={handleTextBlur}
+                    placeholder="**/*.test.ts, **/dist/**"
+                    className="input text-xs"
+                  />
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Comma-separated patterns.
+                  </p>
+                </div>
+
+                {/* Respect .gitignore */}
+                <label className="flex items-start gap-2 cursor-pointer group">
+                  <div className="relative mt-0.5">
+                    <input
+                      type="checkbox"
+                      checked={respectGitignore}
+                      onChange={(e) =>
+                        setRespectGitignore(e.target.checked)
+                      }
+                      className="peer sr-only"
+                    />
+                    <div className="w-3.5 h-3.5 rounded border border-neutral-700 bg-neutral-900 peer-checked:bg-brand-600 peer-checked:border-brand-600 transition flex items-center justify-center">
+                      {respectGitignore && (
+                        <svg
+                          className="w-2.5 h-2.5 text-white"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={3}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-xs font-medium text-neutral-200">
+                      Respect .gitignore
+                    </div>
+                  </div>
+                </label>
+
+                {/* Respect .aiignore */}
+                <label className="flex items-start gap-2 cursor-pointer group">
+                  <div className="relative mt-0.5">
+                    <input
+                      type="checkbox"
+                      checked={respectAiIgnore}
+                      onChange={(e) =>
+                        setRespectAiIgnore(e.target.checked)
+                      }
+                      className="peer sr-only"
+                    />
+                    <div className="w-3.5 h-3.5 rounded border border-neutral-700 bg-neutral-900 peer-checked:bg-brand-600 peer-checked:border-brand-600 transition flex items-center justify-center">
+                      {respectAiIgnore && (
+                        <svg
+                          className="w-2.5 h-2.5 text-white"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={3}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-xs font-medium text-neutral-200">
+                      Respect AI ignore files
+                    </div>
+                  </div>
+                </label>
+
+                {/* Use default patterns */}
+                <label className="flex items-start gap-2 cursor-pointer group">
+                  <div className="relative mt-0.5">
+                    <input
+                      type="checkbox"
+                      checked={useDefaultPatterns}
+                      onChange={(e) =>
+                        setUseDefaultPatterns(e.target.checked)
+                      }
+                      className="peer sr-only"
+                    />
+                    <div className="w-3.5 h-3.5 rounded border border-neutral-700 bg-neutral-900 peer-checked:bg-brand-600 peer-checked:border-brand-600 transition flex items-center justify-center">
+                      {useDefaultPatterns && (
+                        <svg
+                          className="w-2.5 h-2.5 text-white"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={3}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-xs font-medium text-neutral-200">
+                      Use default ignore patterns
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* Directory Structure */}
+            {packResult && (
+              <div className="mt-8 pt-8 border-t border-neutral-800">
+                <h3 className="text-sm font-semibold mb-4 text-neutral-100">
+                  Directory Structure
+                </h3>
+                <div className="space-y-2">
+                  {packResult.repos.map((repo, idx) => {
+                    if (repo.error) return null
+
+                    const structureMatch = repo.output.match(
+                      /<directory_structure>\s*([\s\S]*?)\s*<\/directory_structure>/
+                    )
+
+                    if (!structureMatch) return null
+
+                    return (
+                      <details
+                        key={idx}
+                        className="group"
+                      >
+                        <summary className="cursor-pointer list-none">
+                          <div className="flex items-center gap-2 p-2 hover:bg-neutral-900 rounded-lg transition text-xs">
+                            <svg
+                              className="w-3 h-3 text-neutral-500 transition-transform group-open:rotate-90 flex-shrink-0"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 5l7 7-7 7"
+                              />
+                            </svg>
+                            <span className="font-mono font-medium text-neutral-200 truncate">
+                              {repo.repo.split('/')[1] || repo.repo}
+                            </span>
+                            <span className="text-neutral-600 ml-auto flex-shrink-0">
+                              {repo.stats.fileCount}
+                            </span>
+                          </div>
+                        </summary>
+                        <div className="mt-1 ml-5">
+                          <pre className="text-[10px] leading-tight overflow-x-auto p-2 bg-neutral-950 rounded border border-neutral-800 font-mono whitespace-pre text-neutral-400 max-h-60 overflow-y-auto">
+                            {structureMatch[1].trim()}
+                          </pre>
+                        </div>
+                      </details>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            </div>
           </aside>
 
           {/* Right Pane: Controls & Results */}
-          <div className="relative pb-24">
+          <div className="relative pb-24 px-6 sm:px-8 lg:px-12">
             {/* Global error banner */}
             {error && selectedRepos.size > 0 && (
               <div className="mb-6 p-4 bg-danger/10 border border-danger/30 rounded-xl flex items-start gap-3">
@@ -855,310 +1171,21 @@ export default function Home() {
               </div>
             )}
 
-            {/* Prompt input - always visible */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium mb-2 text-neutral-200">
-                Your question or task (optional)
-              </label>
-              <textarea
-                value={userPrompt}
-                onChange={(e) => setUserPrompt(e.target.value)}
-                placeholder="e.g., Explain how authentication works in this codebase"
-                rows={3}
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-              />
-              {packResult && userPrompt !== lastCountedPromptRef.current && (
-                <div className="mt-2 flex items-center justify-between">
-                  <p className="text-xs text-neutral-500">
-                    Prompt changed — token count may be outdated
-                  </p>
-                  <button
-                    onClick={() => handleCountTokens(packResult)}
-                    disabled={countingTokens}
-                    className="btn-secondary text-xs disabled:opacity-50"
-                  >
-                    {countingTokens ? "Counting..." : "Update Token Count"}
-                  </button>
-                </div>
-              )}
-              {!packResult && selectedRepos.size === 0 && (
-                <p className="mt-1.5 text-xs text-neutral-500">
-                  Select repositories to start packing
-                </p>
-              )}
-            </div>
-
-            {/* Token Meter - Only show when pack result exists */}
-            {packResult && tokenResult && (
-              <div className="mb-6">
-                <div
-                  className="w-full h-1.5 bg-neutral-900 rounded-full overflow-hidden mb-2"
-                  role="progressbar"
-                  aria-valuenow={tokenResult.totalTokens}
-                  aria-valuemin={0}
-                  aria-valuemax={tokenResult.modelLimit}
-                  aria-label={`${tokenResult.totalTokens.toLocaleString()} of ${tokenResult.modelLimit.toLocaleString()} tokens used`}
-                >
-                  <div
-                    className={`h-full transition-all duration-500 ${
-                      tokenResult.status === "over"
-                        ? "bg-danger"
-                        : tokenResult.status === "near"
-                        ? "bg-warn"
-                        : "bg-ok"
-                    }`}
-                    style={{
-                      width: `${Math.min(
-                        (tokenResult.totalTokens / tokenResult.modelLimit) *
-                          100,
-                        100
-                      )}%`,
-                    }}
+                {/* Chat Interface - Main CTA */}
+                {packHash && (
+                  <Chat
+                    packedContext={getCompleteContext()}
+                    packHash={packHash}
                   />
-                </div>
-                <div className="flex items-center justify-between text-xs text-neutral-500">
-                      <span className="flex items-center gap-2">
-                        {packResult.repos.reduce(
-                          (sum, r) => sum + r.stats.fileCount,
-                          0
-                        )}{" "}
-                        files •{" "}
-                        {countingTokens ? (
-                          <span className="flex items-center gap-1.5 text-neutral-400">
-                            <Spinner size="sm" />
-                            Counting...
-                          </span>
-                        ) : (
-                          <>
-                            {tokenResult.totalTokens.toLocaleString()} /{" "}
-                            {(tokenResult.modelLimit / 1000000).toFixed(1)}M
-                            tokens
-                          </>
-                        )}
-                      </span>
-                      <span>
-                        {config.gemini.models[config.gemini.defaultModel]
-                          ?.name || "Gemini 2.5 Flash"}
-                      </span>
-                    </div>
-
-                    {/* Token count error warning */}
-                    {tokenCountError && (
-                      <div className="mt-3 flex items-start gap-2 text-xs text-warn">
-                        <svg
-                          className="w-4 h-4 flex-shrink-0 mt-0.5"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                          />
-                        </svg>
-                        <div className="flex-1">
-                          <span>
-                            {tokenCountError}{" "}
-                            <button
-                              onClick={() =>
-                                packResult && handleCountTokens(packResult)
-                              }
-                              className="underline hover:text-warn/80 transition"
-                            >
-                              Retry
-                            </button>
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
                 )}
 
-                {/* Filters - Collapsed by default */}
-                <details className="mb-8 group">
-                  <summary className="cursor-pointer list-none mb-6">
-                    <div className="inline-flex items-center gap-2 text-sm text-neutral-400 hover:text-neutral-200 transition">
-                      <svg
-                        className="w-4 h-4 transition-transform group-open:rotate-90"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 5l7 7-7 7"
-                        />
-                      </svg>
-                      <span>Advanced Filters</span>
-                    </div>
-                    <p className="mt-1 ml-6 text-xs text-neutral-500">
-                      All files included by default. Add patterns to narrow.
+                {/* Export Actions */}
+                {packResult && (
+                  <div className="mb-6">
+                    <p className="text-xs text-neutral-500 mb-2">
+                      Copy to external AI:
                     </p>
-                  </summary>
-
-                  <div className="ml-6 space-y-4">
-                    {/* Include globs */}
-                    <div>
-                      <label className="block text-sm font-medium mb-2 text-neutral-200">
-                        Include globs
-                      </label>
-                      <input
-                        type="text"
-                        value={includeGlobs}
-                        onChange={(e) => setIncludeGlobs(e.target.value)}
-                        onBlur={handleTextBlur}
-                        placeholder="**/*.ts, src/**"
-                        className="input"
-                      />
-                      <p className="mt-1 text-xs text-neutral-500">
-                        Comma-separated patterns. Leave empty for all files.
-                      </p>
-                    </div>
-
-                    {/* Ignore globs */}
-                    <div>
-                      <label className="block text-sm font-medium mb-2 text-neutral-200">
-                        Ignore globs
-                      </label>
-                      <input
-                        type="text"
-                        value={ignoreGlobs}
-                        onChange={(e) => setIgnoreGlobs(e.target.value)}
-                        onBlur={handleTextBlur}
-                        placeholder="**/*.test.ts, **/dist/**"
-                        className="input"
-                      />
-                      <p className="mt-1 text-xs text-neutral-500">
-                        Comma-separated patterns to exclude.
-                      </p>
-                    </div>
-
-                    {/* Respect .gitignore */}
-                    <label className="flex items-start gap-3 cursor-pointer group">
-                      <div className="relative mt-0.5">
-                        <input
-                          type="checkbox"
-                          checked={respectGitignore}
-                          onChange={(e) =>
-                            setRespectGitignore(e.target.checked)
-                          }
-                          className="peer sr-only"
-                        />
-                        <div className="w-4 h-4 rounded border border-neutral-700 bg-neutral-900 peer-checked:bg-brand-600 peer-checked:border-brand-600 transition flex items-center justify-center">
-                          {respectGitignore && (
-                            <svg
-                              className="w-3 h-3 text-white"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={3}
-                                d="M5 13l4 4L19 7"
-                              />
-                            </svg>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex-1">
-                        <div className="text-sm font-medium text-neutral-200">
-                          Respect .gitignore
-                        </div>
-                        <div className="text-xs text-neutral-500">
-                          Recommended. Excludes ignored files automatically.
-                        </div>
-                      </div>
-                    </label>
-
-                    {/* Respect .aiignore */}
-                    <label className="flex items-start gap-3 cursor-pointer group">
-                      <div className="relative mt-0.5">
-                        <input
-                          type="checkbox"
-                          checked={respectAiIgnore}
-                          onChange={(e) =>
-                            setRespectAiIgnore(e.target.checked)
-                          }
-                          className="peer sr-only"
-                        />
-                        <div className="w-4 h-4 rounded border border-neutral-700 bg-neutral-900 peer-checked:bg-brand-600 peer-checked:border-brand-600 transition flex items-center justify-center">
-                          {respectAiIgnore && (
-                            <svg
-                              className="w-3 h-3 text-white"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={3}
-                                d="M5 13l4 4L19 7"
-                              />
-                            </svg>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex-1">
-                        <div className="text-sm font-medium text-neutral-200">
-                          Respect AI ignore files
-                        </div>
-                        <div className="text-xs text-neutral-500">
-                          Recommended. Checks .aiignore, .aiexclude, .cursorignore, .codeiumignore, and others.
-                        </div>
-                      </div>
-                    </label>
-
-                    {/* Use default patterns */}
-                    <label className="flex items-start gap-3 cursor-pointer group">
-                      <div className="relative mt-0.5">
-                        <input
-                          type="checkbox"
-                          checked={useDefaultPatterns}
-                          onChange={(e) =>
-                            setUseDefaultPatterns(e.target.checked)
-                          }
-                          className="peer sr-only"
-                        />
-                        <div className="w-4 h-4 rounded border border-neutral-700 bg-neutral-900 peer-checked:bg-brand-600 peer-checked:border-brand-600 transition flex items-center justify-center">
-                          {useDefaultPatterns && (
-                            <svg
-                              className="w-3 h-3 text-white"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={3}
-                                d="M5 13l4 4L19 7"
-                              />
-                            </svg>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex-1">
-                        <div className="text-sm font-medium text-neutral-200">
-                          Use default ignore patterns
-                        </div>
-                        <div className="text-xs text-neutral-500">
-                          Skips common noise (node_modules, .git, etc.).
-                        </div>
-                      </div>
-                    </label>
-                  </div>
-                </details>
-
-                {/* Primary CTAs */}
-                <div className="mb-8">
-                    <div className="flex flex-col gap-3">
+                    <div className="flex flex-wrap gap-2">
                       <button
                         onClick={() =>
                           handleOpenInAI(
@@ -1166,122 +1193,42 @@ export default function Home() {
                             "https://aistudio.google.com/prompts/new_chat?model=gemini-2.5-pro"
                           )
                         }
-                        className="btn-primary w-full text-base py-3"
-                        disabled={!packResult || tokenResult?.status === "over"}
+                        className="btn-secondary text-xs cursor-pointer"
+                        disabled={tokenResult?.status === "over"}
                       >
-                        Copy & open AI Studio
+                        AI Studio
                       </button>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() =>
-                            handleOpenInAI(
-                              "Gemini",
-                              "https://gemini.google.com/app"
-                            )
-                          }
-                          className="btn-secondary flex-1"
-                          disabled={!packResult}
-                        >
-                          Gemini
-                        </button>
-                        <button
-                          onClick={() =>
-                            handleOpenInAI("Claude", "https://claude.ai/new")
-                          }
-                          className="btn-secondary flex-1"
-                          disabled={!packResult || !!(tokenResult && tokenResult.totalTokens > 200000)}
-                          title={
-                            tokenResult && tokenResult.totalTokens > 200000
-                              ? `Claude limit: 200K tokens (current: ${tokenResult.totalTokens.toLocaleString()})`
-                              : undefined
-                          }
-                        >
-                          Claude
-                        </button>
-                        <button onClick={handleDownload} className="btn-ghost" disabled={!packResult}>
-                          Download
-                        </button>
-                      </div>
+                      <button
+                        onClick={() =>
+                          handleOpenInAI(
+                            "Gemini",
+                            "https://gemini.google.com/app"
+                          )
+                        }
+                        className="btn-secondary text-xs cursor-pointer"
+                      >
+                        Gemini
+                      </button>
+                      <button
+                        onClick={() =>
+                          handleOpenInAI("Claude", "https://claude.ai/new")
+                        }
+                        className="btn-secondary text-xs cursor-pointer"
+                        disabled={!!(tokenResult && tokenResult.totalTokens > 200000)}
+                        title={
+                          tokenResult && tokenResult.totalTokens > 200000
+                            ? `Claude limit: 200K tokens (current: ${tokenResult.totalTokens.toLocaleString()})`
+                            : undefined
+                        }
+                      >
+                        Claude
+                      </button>
+                      <button onClick={handleDownload} className="btn-secondary text-xs cursor-pointer">
+                        Download .txt
+                      </button>
                     </div>
-
-                    {/* Status message */}
-                    {tokenResult && (
-                      <div className="mt-3 flex items-start gap-2 text-xs">
-                        {tokenResult.status === "over" ? (
-                          <>
-                            <svg
-                              className="w-4 h-4 text-danger flex-shrink-0 mt-0.5"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                              />
-                            </svg>
-                            <p className="text-danger">
-                              <span className="font-medium">Over limit</span> —
-                              Try: add{" "}
-                              <code className="px-1 py-0.5 bg-neutral-900 rounded">
-                                src/**
-                              </code>{" "}
-                              to Include in Advanced Filters, or deselect 1-2
-                              repos.
-                            </p>
-                          </>
-                        ) : tokenResult.status === "near" ? (
-                          <>
-                            <svg
-                              className="w-4 h-4 text-warn flex-shrink-0 mt-0.5"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                              />
-                            </svg>
-                            <p className="text-warn">
-                              <span className="font-medium">
-                                Close to limit
-                              </span>{" "}
-                              — Try: add{" "}
-                              <code className="px-1 py-0.5 bg-neutral-900 rounded">
-                                **/*.ts
-                              </code>{" "}
-                              to Include, or deselect a large repo.
-                            </p>
-                          </>
-                        ) : (
-                          <>
-                            <svg
-                              className="w-4 h-4 text-ok flex-shrink-0 mt-0.5"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                              />
-                            </svg>
-                            <p className="text-ok">
-                              <span className="font-medium">Within limit</span>{" "}
-                              — Ready to send.
-                            </p>
-                          </>
-                        )}
-                      </div>
-                    )}
-                </div>
+                  </div>
+                )}
 
                 {/* Loading state */}
                 {loading && (
@@ -1333,78 +1280,6 @@ export default function Home() {
                         </div>
                       </div>
                     )}
-
-                    {/* Directory Structure */}
-                    <div className="pt-8 border-t border-neutral-800">
-                      <h3 className="text-lg font-semibold mb-6 text-neutral-100 flex items-center gap-2">
-                        Directory Structure
-                        {packResult.errors.length > 0 && (
-                          <span className="text-xs bg-danger/20 text-danger px-2 py-0.5 rounded-full font-medium">
-                            {packResult.errors.length} error
-                            {packResult.errors.length > 1 ? "s" : ""}
-                          </span>
-                        )}
-                      </h3>
-                      <div className="space-y-3">
-                        {packResult.repos.map((repo, idx) => {
-                          if (repo.error) return null;
-
-                          const structureMatch = repo.output.match(
-                            /<directory_structure>\s*([\s\S]*?)\s*<\/directory_structure>/
-                          );
-
-                          if (!structureMatch) return null;
-
-                          return (
-                            <details
-                              key={idx}
-                              className="group"
-                              open={packResult.repos.length === 1}
-                            >
-                              <summary className="cursor-pointer list-none focus-ring rounded-xl">
-                                <div className="flex items-center gap-3 p-3 card hover:border-brand-600/50 transition">
-                                  <svg
-                                    className="w-4 h-4 text-neutral-400 transition-transform group-open:rotate-90"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M9 5l7 7-7 7"
-                                    />
-                                  </svg>
-                                  <span className="font-mono text-sm font-semibold text-neutral-100">
-                                    {repo.repo}
-                                  </span>
-                                  <span className="text-xs text-neutral-500">
-                                    ({repo.branch})
-                                  </span>
-                                  <span className="ml-auto text-xs text-neutral-500">
-                                    {repo.stats.fileCount} files
-                                  </span>
-                                </div>
-                              </summary>
-                              <div className="mt-2 ml-6">
-                                <pre className="text-xs overflow-x-auto p-4 bg-neutral-900 rounded-xl border border-neutral-800 font-mono whitespace-pre text-neutral-300">
-                                  {structureMatch[1].trim()}
-                                </pre>
-                              </div>
-                            </details>
-                          );
-                        })}
-                        {packResult.repos.every(
-                          (r) =>
-                            r.error || !r.output.match(/<directory_structure>/)
-                        ) && (
-                          <div className="text-sm text-neutral-500">
-                            No structure available
-                          </div>
-                        )}
-                      </div>
-                    </div>
                   </>
                 )}
           </div>
