@@ -122,7 +122,11 @@ export function ChatMessage({
         <div className="flex-1 min-w-0 overflow-hidden">
           {isEditing ? (
             <div>
-              <div className="text-xs text-muted-foreground mb-2">Edit the previous message and regenerate:</div>
+              <div className="text-xs text-muted-foreground mb-2">
+                {previousMessage && previousMessage.role === 'user' && editContent === previousMessage.content
+                  ? 'Edit the previous message and regenerate:'
+                  : 'Edit this message:'}
+              </div>
               <textarea
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
@@ -132,7 +136,9 @@ export function ChatMessage({
               />
               <div className="flex gap-2 mt-2">
                 <button onClick={handleSaveEdit} className="btn-primary text-xs cursor-pointer">
-                  Save & Regenerate
+                  {previousMessage && previousMessage.role === 'user' && editContent === previousMessage.content
+                    ? 'Save & Regenerate'
+                    : 'Save'}
                 </button>
                 <button onClick={handleCancelEdit} className="btn-secondary text-xs cursor-pointer">
                   Cancel
@@ -182,6 +188,25 @@ export function ChatMessage({
                 )}
               </button>
 
+              <button
+                onClick={() => {
+                  setEditContent(message.content)
+                  setIsEditing(true)
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground transition flex items-center gap-1 cursor-pointer"
+                disabled={isStreaming}
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                  />
+                </svg>
+                Edit
+              </button>
+
               {previousMessage && previousMessage.role === 'user' && (
                 <button
                   onClick={() => {
@@ -196,28 +221,12 @@ export function ChatMessage({
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                     />
                   </svg>
-                  Edit
+                  Regenerate
                 </button>
               )}
-
-              <button
-                onClick={onRetry}
-                className="text-xs text-muted-foreground hover:text-foreground transition flex items-center gap-1 cursor-pointer"
-                disabled={isStreaming}
-              >
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                </svg>
-                Regenerate
-              </button>
             </div>
             </div>
           )}

@@ -133,7 +133,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
 
           // Paragraphs: Moderate spacing, not blog-generous
           p: ({ node, ...props }) => (
-            <p className="mb-3 last:mb-0 leading-normal [li>&]:mb-0" {...props} />
+            <p className="mb-3 last:mb-0 leading-normal [li>&]:mb-0 break-words" {...props} />
           ),
 
           // Lists: TIGHT spacing like ChatGPT/Claude
@@ -200,7 +200,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           code: ({ node, className, children, ...props }) => {
             const isInline = !className
             return isInline ? (
-              <code className="bg-secondary/60 text-foreground px-1 py-0.5 rounded text-xs font-mono" {...props}>
+              <code className="bg-secondary/60 text-foreground px-1 py-0.5 rounded text-xs font-mono break-words" {...props}>
                 {children}
               </code>
             ) : (
@@ -212,7 +212,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           // Links: Secure and visible
           a: ({ node, ...props }) => (
             <a
-              className="text-brand-400 hover:text-brand-300 underline underline-offset-2"
+              className="text-brand-400 hover:text-brand-300 underline underline-offset-2 break-all"
               target="_blank"
               rel="noopener noreferrer"
               {...props}
