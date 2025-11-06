@@ -570,13 +570,58 @@ export default function Home() {
   // Render
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100">
+      {/* Mobile Header */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 bg-neutral-950 border-b border-neutral-800 z-40 flex items-center gap-3 p-4">
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="p-2 -ml-2 text-neutral-400 hover:text-neutral-200 transition"
+          aria-label="Open menu"
+        >
+          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <Image src="/icon-no-bg.png" alt="Vana Logo" width={24} height={24} />
+        <span className="font-semibold text-sm">Vana Source Query</span>
+      </div>
+
+      {/* Backdrop (mobile only) */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Two-pane layout */}
-      <div className="flex">
+      <div className="flex pt-16 lg:pt-0">
         <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] w-full max-w-[1600px] mx-auto">
-          {/* Left Sidebar - Flush to edge */}
-          <aside className="border-r border-neutral-800 lg:sticky lg:top-0 lg:h-screen flex flex-col">
+          {/* Left Sidebar */}
+          <aside className={`
+            fixed lg:relative
+            inset-y-0 left-0
+            w-[320px] lg:w-[400px]
+            bg-neutral-950
+            border-r border-neutral-800
+            lg:sticky lg:top-0 lg:h-screen
+            flex flex-col
+            transition-transform duration-300
+            z-50
+            ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+          `}>
             {/* Compact Header + Token Meter */}
             <div className="flex-shrink-0 p-4 border-b border-neutral-800">
+              {/* Close button (mobile only) */}
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="lg:hidden absolute top-4 right-4 p-1 text-neutral-400 hover:text-neutral-200 transition"
+                aria-label="Close menu"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+
               {/* Logo + Title */}
               <div className="flex items-center gap-2 mb-3">
                 <Image
