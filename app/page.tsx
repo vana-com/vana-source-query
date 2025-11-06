@@ -48,8 +48,9 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Gemini settings
+  const [availableModels, setAvailableModels] = useState<Array<{name: string, displayName: string}>>([]);
   const [geminiModel, setGeminiModel] = useState<string>(config.gemini.defaultModel);
-  const [thinkingBudget, setThinkingBudget] = useState<number>(-1); // -1 = auto, 0 = off, 1-24576 = manual
+  const [thinkingBudget, setThinkingBudget] = useState<number>(32768); // Default to maximum for code analysis
 
   // Track last packed state to avoid unnecessary repacks
   const [lastPackedState, setLastPackedState] = useState<string | null>(null);
@@ -88,7 +89,7 @@ export default function Home() {
     setUseDefaultPatterns(cache.useDefaultPatterns);
     setUserPrompt(cache.userPrompt);
     setGeminiModel(cache.geminiModel ?? config.gemini.defaultModel);
-    setThinkingBudget(cache.thinkingBudget ?? -1); // Default auto
+    setThinkingBudget(cache.thinkingBudget ?? 32768); // Default maximum
     // Load external repos from cache
     if (cache.externalRepos && cache.externalRepos.length > 0) {
       const externalReposMap = new Map(
@@ -97,6 +98,37 @@ export default function Home() {
       setAddedExternalRepos(externalReposMap);
     }
     setCacheLoaded(true);
+  }, []);
+
+  // Fetch available Gemini models on mount
+  useEffect(() => {
+    async function fetchModels() {
+      try {
+        const response = await fetch('/api/gemini/models', {
+          headers: {
+            ...(process.env.NEXT_PUBLIC_GEMINI_API_KEY
+              ? { 'X-Gemini-Key': process.env.NEXT_PUBLIC_GEMINI_API_KEY }
+              : {}),
+          },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.models && data.models.length > 0) {
+            setAvailableModels(data.models);
+            // If current model not in list, set to first available
+            const modelNames = data.models.map((m: any) => m.name);
+            if (!modelNames.includes(geminiModel)) {
+              setGeminiModel(modelNames[0]);
+            }
+          }
+        } else {
+          console.warn('[models] Failed to fetch models, using config defaults');
+        }
+      } catch (error) {
+        console.error('[models] Error fetching models:', error);
+      }
+    }
+    fetchModels();
   }, []);
 
   // Auto-load repos on mount
@@ -800,11 +832,15 @@ export default function Home() {
                   onChange={(e) => setGeminiModel(e.target.value)}
                   className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 cursor-pointer"
                 >
-                  {Object.entries(config.gemini.models).map(([id, model]) => (
-                    <option key={id} value={id}>
-                      {model.name}
-                    </option>
-                  ))}
+                  {availableModels.length > 0 ? (
+                    availableModels.map((model) => (
+                      <option key={model.name} value={model.name}>
+                        {model.displayName}
+                      </option>
+                    ))
+                  ) : (
+                    <option value={config.gemini.defaultModel}>Loading models...</option>
+                  )}
                 </select>
               </div>
 
@@ -812,20 +848,16 @@ export default function Home() {
               {(geminiModel.includes('2.5')) && (
                 <div>
                   <label className="block text-xs text-neutral-400 mb-1">
-                    Thinking Budget
-                    <span className="text-neutral-600 ml-1" title="Controls reasoning depth for complex analysis">ⓘ</span>
+                    Thinking Mode
+                    <span className="text-neutral-600 ml-1" title="Deep reasoning for complex code analysis">ⓘ</span>
                   </label>
                   <select
                     value={thinkingBudget}
                     onChange={(e) => setThinkingBudget(Number(e.target.value))}
                     className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 cursor-pointer"
                   >
-                    <option value={-1}>Auto (dynamic)</option>
-                    <option value={0}>Off (faster)</option>
-                    <option value={1024}>Low (1K tokens)</option>
-                    <option value={4096}>Medium (4K tokens)</option>
-                    <option value={8192}>High (8K tokens)</option>
-                    <option value={24576}>Max (24K tokens)</option>
+                    <option value={32768}>Maximum (32K)</option>
+                    <option value={0}>Off (fastest)</option>
                   </select>
                 </div>
               )}
