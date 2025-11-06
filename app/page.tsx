@@ -45,6 +45,7 @@ export default function Home() {
   const [copiedMessage, setCopiedMessage] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [packHash, setPackHash] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Track last packed state to avoid unnecessary repacks
   const [lastPackedState, setLastPackedState] = useState<string | null>(null);
