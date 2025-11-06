@@ -1,4 +1,4 @@
-import { AppConfig } from './types'
+import { AppConfig } from "./types";
 
 /**
  * Application Configuration
@@ -6,7 +6,7 @@ import { AppConfig } from './types'
  */
 export const config: AppConfig = {
   github: {
-    apiUrl: 'https://api.github.com',
+    apiUrl: "https://api.github.com",
     timeout: 30000, // 30s
   },
   repomix: {
@@ -15,9 +15,9 @@ export const config: AppConfig = {
     maxTotalSize: 50 * 1024, // 50MB total per repo (in KB)
   },
   gemini: {
-    defaultModel: 'models/gemini-2.5-flash', // Models are fetched dynamically from API
+    defaultModel: "gemini-pro-latest", // baseModelId format (models/ prefix stripped)
   },
-}
+};
 
 /**
  * Cache Configuration
@@ -39,7 +39,7 @@ export const CACHE_CONFIG = {
   purgeIfNotAccessedDays: 30, // Auto-purge if not accessed in 30 days
 
   // IndexedDB
-  dbName: 'vana-pack-cache',
+  dbName: "vana-pack-cache",
   dbVersion: 1,
-  storeName: 'packs',
-}
+  storeName: "packs",
+};

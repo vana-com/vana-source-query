@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
         model.supportedGenerationMethods?.includes('generateContent')
       )
       .map((model: any) => ({
-        name: model.name, // e.g. "models/gemini-2.5-flash"
+        name: model.baseModelId || model.name.replace('models/', ''), // Use baseModelId for SDK calls
         displayName: model.displayName || model.name.replace('models/', ''),
         description: model.description,
         inputTokenLimit: model.inputTokenLimit,
