@@ -12,7 +12,7 @@ export const runtime = 'nodejs'
 export async function POST(request: NextRequest) {
   try {
     const body: ChatRequest = await request.json()
-    const { contextText, userMessage, conversationHistory, modelId } = body
+    const { contextText, userMessage, conversationHistory, modelId, thinkingBudget } = body
 
     // Validation
     if (!userMessage) {
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       async start(controller) {
         try {
           // Stream response chunks
-          for await (const chunk of client.chat(model, fullContext, userMessage)) {
+          for await (const chunk of client.chat(model, fullContext, userMessage, thinkingBudget)) {
             const event: ChatStreamEvent = { type: 'chunk', text: chunk }
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
           }

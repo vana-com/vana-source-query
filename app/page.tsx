@@ -47,6 +47,10 @@ export default function Home() {
   const [packHash, setPackHash] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Gemini settings
+  const [geminiModel, setGeminiModel] = useState<string>(config.gemini.defaultModel);
+  const [thinkingBudget, setThinkingBudget] = useState<number>(-1); // -1 = auto, 0 = off, 1-24576 = manual
+
   // Track last packed state to avoid unnecessary repacks
   const [lastPackedState, setLastPackedState] = useState<string | null>(null);
 
@@ -83,6 +87,8 @@ export default function Home() {
     setRespectAiIgnore(cache.respectAiIgnore ?? true); // Default true for new users
     setUseDefaultPatterns(cache.useDefaultPatterns);
     setUserPrompt(cache.userPrompt);
+    setGeminiModel(cache.geminiModel ?? config.gemini.defaultModel);
+    setThinkingBudget(cache.thinkingBudget ?? -1); // Default auto
     // Load external repos from cache
     if (cache.externalRepos && cache.externalRepos.length > 0) {
       const externalReposMap = new Map(
@@ -123,6 +129,8 @@ export default function Home() {
       useDefaultPatterns,
       userPrompt,
       externalRepos: Array.from(addedExternalRepos.values()),
+      geminiModel,
+      thinkingBudget,
     });
   }, [
     cacheLoaded,
@@ -135,6 +143,8 @@ export default function Home() {
     useDefaultPatterns,
     userPrompt,
     addedExternalRepos,
+    geminiModel,
+    thinkingBudget,
   ]);
 
   // Generate state hash for comparison (excludes userPrompt - prompt changes only recount tokens)
@@ -778,6 +788,49 @@ export default function Home() {
               )}
             </div>
 
+            {/* Gemini Settings */}
+            <div className="flex-shrink-0 p-4 border-b border-neutral-800 space-y-3">
+              <div className="eyebrow">Gemini Settings</div>
+
+              {/* Model Selection */}
+              <div>
+                <label className="block text-xs text-neutral-400 mb-1">Model</label>
+                <select
+                  value={geminiModel}
+                  onChange={(e) => setGeminiModel(e.target.value)}
+                  className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 cursor-pointer"
+                >
+                  {Object.entries(config.gemini.models).map(([id, model]) => (
+                    <option key={id} value={id}>
+                      {model.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Thinking Budget (only for 2.5 models) */}
+              {(geminiModel.includes('2.5')) && (
+                <div>
+                  <label className="block text-xs text-neutral-400 mb-1">
+                    Thinking Budget
+                    <span className="text-neutral-600 ml-1" title="Controls reasoning depth for complex analysis">ⓘ</span>
+                  </label>
+                  <select
+                    value={thinkingBudget}
+                    onChange={(e) => setThinkingBudget(Number(e.target.value))}
+                    className="w-full rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 cursor-pointer"
+                  >
+                    <option value={-1}>Auto (dynamic)</option>
+                    <option value={0}>Off (faster)</option>
+                    <option value={1024}>Low (1K tokens)</option>
+                    <option value={4096}>Medium (4K tokens)</option>
+                    <option value={8192}>High (8K tokens)</option>
+                    <option value={24576}>Max (24K tokens)</option>
+                  </select>
+                </div>
+              )}
+            </div>
+
             {/* Repositories Section - Scrollable */}
             <div className="flex-shrink-0 p-6 border-b border-neutral-800">
 
@@ -1312,6 +1365,8 @@ export default function Home() {
                   <Chat
                     packedContext={getCompleteContext()}
                     packHash={packHash}
+                    modelId={geminiModel}
+                    thinkingBudget={thinkingBudget}
                   />
                 )}
 

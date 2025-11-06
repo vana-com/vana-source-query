@@ -3,6 +3,8 @@
  * Persists user customizations across sessions
  */
 
+import { config } from './config'
+
 export interface VanaQueryCache {
   selectedRepos: string[]
   repoBranches: Record<string, string>
@@ -21,6 +23,8 @@ export interface VanaQueryCache {
     private: boolean
     description?: string | null
   }> // Optional for backward compatibility
+  geminiModel?: string // Optional for backward compatibility
+  thinkingBudget?: number // Optional for backward compatibility (-1=auto, 0=off, 1-24576=manual)
 }
 
 const CACHE_KEY = 'vana-query-cache'
@@ -36,6 +40,8 @@ const defaultCache: VanaQueryCache = {
   useDefaultPatterns: true,
   userPrompt: '',
   externalRepos: [],
+  geminiModel: config.gemini.defaultModel,
+  thinkingBudget: -1, // Auto by default
 }
 
 /**

@@ -9,13 +9,15 @@ interface ChatProps {
   packedContext: string
   packHash: string
   geminiApiKey?: string
+  modelId: string
+  thinkingBudget: number
 }
 
 /**
  * Main chat interface component
  * Handles message state, persistence, streaming, and user interactions
  */
-export function Chat({ packedContext, packHash, geminiApiKey }: ChatProps) {
+export function Chat({ packedContext, packHash, geminiApiKey, modelId, thinkingBudget }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -162,6 +164,8 @@ export function Chat({ packedContext, packHash, geminiApiKey }: ChatProps) {
           userMessage: content.trim(),
           conversationHistory:
             conversationHistory.length > 0 ? conversationHistory : undefined,
+          modelId,
+          thinkingBudget,
         }),
       })
 

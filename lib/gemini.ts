@@ -85,10 +85,22 @@ export class GeminiClient {
   async *chat(
     modelId: string,
     contextText: string,
-    userPrompt: string
+    userPrompt: string,
+    thinkingBudget?: number
   ): AsyncGenerator<string, void, unknown> {
     try {
-      const model = this.client.getGenerativeModel({ model: modelId })
+      // Build generation config
+      const generationConfig: any = {}
+
+      // Only add thinking budget for 2.5 models and if specified
+      if (modelId.includes('2.5') && thinkingBudget !== undefined) {
+        generationConfig.thinkingBudget = thinkingBudget
+      }
+
+      const model = this.client.getGenerativeModel({
+        model: modelId,
+        ...(Object.keys(generationConfig).length > 0 ? { generationConfig } : {})
+      })
 
       const result = await model.generateContentStream(
         `${contextText}\n\n# User Prompt\n${userPrompt}`
