@@ -177,7 +177,7 @@ export interface Message {
 }
 
 export interface ChatRequest {
-  contextText: string
+  contextText?: string // Optional - uses default context if not provided
   userMessage: string
   conversationHistory?: Array<{
     role: 'user' | 'model'

@@ -15,20 +15,6 @@ export async function POST(request: NextRequest) {
     const { contextText, userMessage, conversationHistory, modelId } = body
 
     // Validation
-    if (!contextText) {
-      return new Response(
-        `data: ${JSON.stringify({ type: 'error', error: 'Context text required' } as ChatStreamEvent)}\n\n`,
-        {
-          status: 400,
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            Connection: 'keep-alive',
-          },
-        }
-      )
-    }
-
     if (!userMessage) {
       return new Response(
         `data: ${JSON.stringify({ type: 'error', error: 'User message required' } as ChatStreamEvent)}\n\n`,
@@ -67,8 +53,11 @@ export async function POST(request: NextRequest) {
     // Create client
     const client = createGeminiClient(apiKey)
 
-    // Build conversation context if history provided
-    let fullContext = contextText
+    // Build conversation context
+    // If no context provided, use a general assistant context
+    const baseContext = contextText || 'You are a helpful AI assistant specialized in software development and code analysis.'
+
+    let fullContext = baseContext
     if (conversationHistory && conversationHistory.length > 0) {
       const historyText = conversationHistory
         .map((msg) => {
@@ -76,7 +65,7 @@ export async function POST(request: NextRequest) {
           return `${role}: ${msg.content}`
         })
         .join('\n\n')
-      fullContext = `${contextText}\n\n# Previous Conversation\n${historyText}`
+      fullContext = `${baseContext}\n\n# Previous Conversation\n${historyText}`
     }
 
     // Create SSE stream
