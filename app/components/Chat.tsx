@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useInView } from 'react-intersection-observer'
 import { Message, ChatStreamEvent } from '@/lib/types'
 import { getConversation, saveMessages, deleteConversation } from '@/lib/chatDb'
@@ -26,6 +26,12 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
   const [error, setError] = useState<string | null>(null)
   const [isVisible, setIsVisible] = useState(true) // Auto-open by default
   const [showExportMenu, setShowExportMenu] = useState(false)
+  const [conversationTokens, setConversationTokens] = useState<{
+    totalTokens: number
+    modelLimit: number
+    status: 'ok' | 'near' | 'over'
+  } | null>(null)
+  const [countingTokens, setCountingTokens] = useState(false)
 
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -38,6 +44,76 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
     threshold: 0,
     rootMargin: '0px 0px 100px 0px', // Trigger slightly before actual bottom
   })
+
+  // Count tokens for current conversation state
+  // Mirrors EXACTLY what chat API sends to Gemini
+  const countConversationTokens = useCallback(async () => {
+    if (!geminiApiKey || messages.length === 0) {
+      setConversationTokens(null)
+      return
+    }
+
+    setCountingTokens(true)
+    try {
+      // Build the EXACT same context as chat API does
+      const conversationHistory = messages.slice(0, -1).map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      }))
+
+      const lastMessage = messages[messages.length - 1]
+
+      // Format conversation history exactly as chat API does
+      let fullContext = packedContext
+      if (conversationHistory.length > 0) {
+        const historyText = conversationHistory
+          .map((msg) => {
+            const role = msg.role === 'user' ? 'User' : 'Assistant'
+            return `${role}: ${msg.content}`
+          })
+          .join('\n\n')
+        fullContext = `${packedContext}\n\n# Previous Conversation\n${historyText}`
+      }
+
+      // Add current message exactly as gemini.ts does
+      const finalText = `${fullContext}\n\n# User Prompt\n${lastMessage.content}`
+
+      console.log('[Chat] Counting tokens for', finalText.length, 'chars')
+
+      const response = await fetch('/api/tokens', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Gemini-Key': geminiApiKey,
+        },
+        body: JSON.stringify({
+          modelId,
+          contextText: finalText,
+          // No separate userPrompt - it's already in finalText
+        }),
+      })
+
+      if (!response.ok) {
+        console.error('[Chat] Token count failed:', await response.text())
+        setConversationTokens(null)
+        return
+      }
+
+      const result = await response.json()
+      console.log('[Chat] Conversation tokens:', result.data)
+
+      setConversationTokens({
+        totalTokens: result.data.totalTokens,
+        modelLimit: result.data.modelLimit,
+        status: result.data.status,
+      })
+    } catch (error) {
+      console.error('[Chat] Token counting error:', error)
+      setConversationTokens(null)
+    } finally {
+      setCountingTokens(false)
+    }
+  }, [geminiApiKey, messages, packedContext, modelId])
 
   // Load conversation from IndexedDB when conversationId changes
   useEffect(() => {
@@ -63,6 +139,13 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
       saveMessages(conversationId, messages)
     }
   }, [messages, conversationId])
+
+  // Count tokens whenever messages change (after streaming completes)
+  useEffect(() => {
+    if (!streaming && messages.length > 0) {
+      countConversationTokens()
+    }
+  }, [messages, streaming, countConversationTokens])
 
   // Auto-scroll when messages change if we're at bottom
   useEffect(() => {
@@ -273,6 +356,9 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
     if (conversationId) {
       saveMessages(conversationId, updatedMessages)
     }
+
+    // Recount tokens after edit
+    setTimeout(() => countConversationTokens(), 100)
   }
 
   const handleEdit = (messageIndex: number, newContent: string) => {
@@ -457,6 +543,33 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
 
       {/* Input - Sticky at bottom */}
       <div className="flex-shrink-0 relative bg-background pt-3 border-t border-border">
+        {/* Token count display */}
+        {conversationTokens && (
+          <div className="px-3 pb-2 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Conversation tokens:</span>
+              <span className={`font-mono ${
+                conversationTokens.status === 'over' ? 'text-danger' :
+                conversationTokens.status === 'near' ? 'text-warning' :
+                'text-success'
+              }`}>
+                {conversationTokens.totalTokens.toLocaleString()} / {conversationTokens.modelLimit.toLocaleString()}
+              </span>
+              {conversationTokens.status === 'over' && (
+                <span className="text-danger text-xs">⚠ Over limit</span>
+              )}
+              {conversationTokens.status === 'near' && (
+                <span className="text-warning text-xs">⚠ Near limit</span>
+              )}
+            </div>
+          </div>
+        )}
+        {countingTokens && (
+          <div className="px-3 pb-2 text-xs text-muted-foreground">
+            Counting tokens...
+          </div>
+        )}
+
         {/* Export Dropdown Menu */}
         {showExportMenu && (
           <div
