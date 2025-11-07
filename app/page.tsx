@@ -35,6 +35,8 @@ export default function Home() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [selectedRepos, setSelectedRepos] = useState<Set<string>>(new Set());
   const [repoBranches, setRepoBranches] = useState<Record<string, string>>({});
+  const [availableBranches, setAvailableBranches] = useState<Record<string, string[]>>({});
+  const [focusedBranchInput, setFocusedBranchInput] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [countingTokens, setCountingTokens] = useState(false);
   const [tokenCountError, setTokenCountError] = useState<string | null>(null);
@@ -401,6 +403,38 @@ export default function Home() {
   // Note: Token counting is NOT auto-triggered on prompt changes.
   // User must manually repack to get updated token count with new prompt.
   // This prevents constant API calls while typing.
+
+  // Fetch available branches for a repo (lazy load on focus)
+  const fetchBranchesForRepo = async (repoFullName: string) => {
+    // Skip if already fetched
+    if (availableBranches[repoFullName]) return;
+
+    try {
+      const res = await fetch(
+        `/api/repos/branches?repo=${encodeURIComponent(repoFullName)}`,
+        {
+          headers: process.env.NEXT_PUBLIC_GITHUB_TOKEN
+            ? { "X-GitHub-Token": process.env.NEXT_PUBLIC_GITHUB_TOKEN }
+            : {},
+        }
+      );
+
+      if (!res.ok) {
+        console.error(`[page] Failed to fetch branches for ${repoFullName}`);
+        return;
+      }
+
+      const json = await res.json();
+      if (json.success) {
+        setAvailableBranches((prev) => ({
+          ...prev,
+          [repoFullName]: json.data,
+        }));
+      }
+    } catch (error) {
+      console.error(`[page] Error fetching branches for ${repoFullName}:`, error);
+    }
+  };
 
   // Handler for text input blur (globs, prompt, branches)
   const handleTextBlur = () => {
@@ -1602,31 +1636,72 @@ export default function Home() {
                                 <div className="mt-0.5 text-xs text-muted-foreground truncate">
                                   Updated {formatRelativeTime(repo.pushedAt)}
                                 </div>
-                                {/* Branch input for selected repos */}
+                                {/* Branch input for selected repos - autocomplete */}
                                 {isSelected && (
                                   <div
-                                    className="mt-2 flex items-center gap-2"
+                                    className="mt-2 flex items-center gap-2 relative"
                                     onClick={(e) => e.stopPropagation()}
                                   >
                                     <span className="text-[10px] text-muted-foreground">
                                       Branch:
                                     </span>
-                                    <input
-                                      type="text"
-                                      value={
-                                        repoBranches[repo.fullName] ||
-                                        repo.defaultBranch
-                                      }
-                                      onChange={(e) => {
-                                        setRepoBranches({
-                                          ...repoBranches,
-                                          [repo.fullName]: e.target.value,
-                                        });
-                                      }}
-                                      onBlur={handleTextBlur}
-                                      placeholder={repo.defaultBranch}
-                                      className="flex-1 px-2 py-0.5 text-xs rounded border border-border bg-secondary text-foreground placeholder-muted-foreground focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                                    />
+                                    <div className="flex-1 relative">
+                                      <input
+                                        type="text"
+                                        value={
+                                          repoBranches[repo.fullName] ||
+                                          repo.defaultBranch
+                                        }
+                                        onChange={(e) => {
+                                          setRepoBranches({
+                                            ...repoBranches,
+                                            [repo.fullName]: e.target.value,
+                                          });
+                                        }}
+                                        onFocus={() => {
+                                          setFocusedBranchInput(repo.fullName);
+                                          fetchBranchesForRepo(repo.fullName);
+                                        }}
+                                        onBlur={() => {
+                                          // Delay to allow clicking dropdown
+                                          setTimeout(() => setFocusedBranchInput(null), 200);
+                                          handleTextBlur();
+                                        }}
+                                        placeholder={repo.defaultBranch}
+                                        className="w-full px-2 py-0.5 text-xs rounded border border-border bg-secondary text-foreground placeholder-muted-foreground focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                                      />
+
+                                      {/* Branch dropdown */}
+                                      {focusedBranchInput === repo.fullName && availableBranches[repo.fullName] && (
+                                        <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto z-50">
+                                          {availableBranches[repo.fullName]
+                                            .filter(branch =>
+                                              branch.toLowerCase().includes(
+                                                (repoBranches[repo.fullName] || repo.defaultBranch).toLowerCase()
+                                              )
+                                            )
+                                            .slice(0, 20)
+                                            .map(branch => (
+                                              <button
+                                                key={branch}
+                                                type="button"
+                                                onMouseDown={(e) => {
+                                                  e.preventDefault();
+                                                  setRepoBranches({
+                                                    ...repoBranches,
+                                                    [repo.fullName]: branch,
+                                                  });
+                                                  setFocusedBranchInput(null);
+                                                  handleTextBlur();
+                                                }}
+                                                className="w-full text-left px-3 py-1.5 text-xs hover:bg-secondary transition"
+                                              >
+                                                {branch}
+                                              </button>
+                                            ))}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 )}
                               </div>

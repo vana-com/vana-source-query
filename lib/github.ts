@@ -118,6 +118,29 @@ export class GitHubClient {
   }
 
   /**
+   * List all branches for a repository
+   * @throws Error with clear message on failure
+   */
+  async listBranches(fullName: string): Promise<string[]> {
+    try {
+      const [owner, repo] = fullName.split('/')
+      if (!owner || !repo) {
+        throw new Error(`Invalid repo format: ${fullName}. Expected: owner/repo`)
+      }
+
+      const { data } = await this.octokit.rest.repos.listBranches({
+        owner,
+        repo,
+        per_page: 100,
+      })
+
+      return data.map(branch => branch.name)
+    } catch (error) {
+      throw this.handleError(error, `Failed to list branches for ${fullName}`)
+    }
+  }
+
+  /**
    * Fetch the current commit SHA for a branch
    * Used for cache freshness validation
    * @throws Error with clear message on failure
