@@ -146,19 +146,26 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
 
   // Count tokens whenever messages change (after streaming completes)
   useEffect(() => {
+    const messageCount = messages.length
+    const messagesHash = messages.map(m => m.id).join(',')
+
     console.log('[Chat] Token count useEffect triggered:', {
       streaming,
-      messageCount: messages.length,
+      messageCount,
+      messagesHash: messagesHash.substring(0, 50),
       hasApiKey: !!geminiApiKey
     })
-    if (!streaming && messages.length > 0 && geminiApiKey) {
-      console.log('[Chat] Triggering token count update')
+
+    if (!streaming && messageCount > 0 && geminiApiKey) {
+      console.log('[Chat] Calling countConversationTokens()')
       countConversationTokens()
-    } else if (messages.length === 0) {
+    } else if (messageCount === 0) {
       console.log('[Chat] No messages, clearing token count')
       setConversationTokens(null)
     }
-  }, [messages, streaming, countConversationTokens, geminiApiKey])
+    // countConversationTokens is stable via useCallback
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, streaming, geminiApiKey])
 
   // Auto-scroll when messages change if we're at bottom
   useEffect(() => {
@@ -556,30 +563,31 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
 
       {/* Input - Sticky at bottom */}
       <div className="flex-shrink-0 relative bg-background pt-3 border-t border-border">
-        {/* Token count display */}
-        {conversationTokens && (
+        {/* Token count display - always show when there are messages */}
+        {messages.length > 0 && (
           <div className="px-3 pb-2 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Conversation tokens:</span>
-              <span className={`font-mono ${
-                conversationTokens.status === 'over' ? 'text-danger' :
-                conversationTokens.status === 'near' ? 'text-warning' :
-                'text-success'
-              }`}>
-                {conversationTokens.totalTokens.toLocaleString()} / {conversationTokens.modelLimit.toLocaleString()}
-              </span>
-              {conversationTokens.status === 'over' && (
-                <span className="text-danger text-xs">⚠ Over limit</span>
-              )}
-              {conversationTokens.status === 'near' && (
-                <span className="text-warning text-xs">⚠ Near limit</span>
-              )}
-            </div>
-          </div>
-        )}
-        {countingTokens && (
-          <div className="px-3 pb-2 text-xs text-muted-foreground">
-            Counting tokens...
+            {countingTokens ? (
+              <div className="text-muted-foreground">
+                Counting tokens...
+              </div>
+            ) : conversationTokens ? (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Conversation tokens:</span>
+                <span className={`font-mono ${
+                  conversationTokens.status === 'over' ? 'text-danger' :
+                  conversationTokens.status === 'near' ? 'text-warning' :
+                  'text-success'
+                }`}>
+                  {conversationTokens.totalTokens.toLocaleString()} / {conversationTokens.modelLimit.toLocaleString()}
+                </span>
+                {conversationTokens.status === 'over' && (
+                  <span className="text-danger text-xs">⚠ Over limit</span>
+                )}
+                {conversationTokens.status === 'near' && (
+                  <span className="text-warning text-xs">⚠ Near limit</span>
+                )}
+              </div>
+            ) : null}
           </div>
         )}
 
