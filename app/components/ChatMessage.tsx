@@ -268,10 +268,7 @@ export function ChatMessage({
 
               {previousMessage && previousMessage.role === 'user' && (
                 <button
-                  onClick={() => {
-                    setEditContent(previousMessage.content)
-                    setIsEditing(true)
-                  }}
+                  onClick={onRetry}
                   className="text-xs text-muted-foreground hover:text-foreground transition flex items-center gap-1 cursor-pointer"
                   disabled={isStreaming}
                 >
