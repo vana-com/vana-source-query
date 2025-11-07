@@ -262,6 +262,19 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
     }
   }
 
+  const handleSave = (messageIndex: number, newContent: string) => {
+    // Save message in place without regenerating (for both user and AI messages)
+    const updatedMessages = messages.map((msg, idx) =>
+      idx === messageIndex ? { ...msg, content: newContent } : msg
+    )
+    setMessages(updatedMessages)
+
+    // Persist to IndexedDB
+    if (conversationId) {
+      saveMessages(conversationId, updatedMessages)
+    }
+  }
+
   const handleEdit = (messageIndex: number, newContent: string) => {
     const message = messages[messageIndex]
 
@@ -271,15 +284,7 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
     } else {
       // AI message: update in place without triggering API call
       // This allows editing AI responses to correct mistakes in history
-      const updatedMessages = messages.map((msg, idx) =>
-        idx === messageIndex ? { ...msg, content: newContent } : msg
-      )
-      setMessages(updatedMessages)
-
-      // Persist to IndexedDB
-      if (conversationId) {
-        saveMessages(conversationId, updatedMessages)
-      }
+      handleSave(messageIndex, newContent)
     }
   }
 
@@ -304,6 +309,17 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
       console.log('[Chat] Copied message:', textToCopy.substring(0, 100) + '...')
     } catch (err) {
       console.error('[Chat] Failed to copy:', err)
+    }
+  }
+
+  const handleDelete = (messageIndex: number) => {
+    // Remove the message at the given index
+    const updatedMessages = messages.filter((_, idx) => idx !== messageIndex)
+    setMessages(updatedMessages)
+
+    // Persist to IndexedDB
+    if (conversationId) {
+      saveMessages(conversationId, updatedMessages)
     }
   }
 
@@ -427,9 +443,11 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
                 previousMessage={index > 0 ? messages[index - 1] : undefined}
                 isLastMessage={index === messages.length - 1}
                 isStreaming={streaming}
+                onSave={(newContent) => handleSave(index, newContent)}
                 onEdit={(newContent) => handleEdit(index, newContent)}
                 onRetry={() => handleRetry(index)}
                 onCopy={() => handleCopy(index)}
+                onDelete={() => handleDelete(index)}
               />
             ))}
             <div ref={messagesEndRef} />

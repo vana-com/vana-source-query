@@ -9,9 +9,11 @@ interface ChatMessageProps {
   previousMessage?: Message
   isLastMessage: boolean
   isStreaming: boolean
+  onSave: (newContent: string) => void
   onEdit: (newContent: string) => void
   onRetry: () => void
   onCopy: () => void
+  onDelete: () => void
 }
 
 /**
@@ -23,9 +25,11 @@ export function ChatMessage({
   previousMessage,
   isLastMessage,
   isStreaming,
+  onSave,
   onEdit,
   onRetry,
   onCopy,
+  onDelete,
 }: ChatMessageProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState(message.content)
@@ -35,7 +39,15 @@ export function ChatMessage({
   const calculateRows = (text: string): number => {
     const lineCount = text.split('\n').length
     const estimatedRows = Math.ceil(text.length / 80) // ~80 chars per row
-    return Math.max(3, Math.min(lineCount + 2, estimatedRows, 20)) // Min 3, max 20
+    // Take the larger of line count or estimated rows, cap at 20, min 3
+    return Math.max(3, Math.min(Math.max(lineCount, estimatedRows), 20))
+  }
+
+  const handleSaveOnly = () => {
+    if (editContent.trim()) {
+      onSave(editContent.trim())
+      setIsEditing(false)
+    }
   }
 
   const handleSaveEdit = () => {
@@ -58,33 +70,70 @@ export function ChatMessage({
 
   if (message.role === 'user') {
     return (
-      <div className="mb-6 flex justify-end">
-        <div className="flex items-start gap-3 max-w-[80%]">
-          <div className="flex-1 min-w-0">
-            {isEditing ? (
-              <div>
-                <textarea
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                  rows={calculateRows(editContent)}
-                  autoFocus
-                />
-                <div className="flex gap-2 mt-2">
-                  <button onClick={handleSaveEdit} className="btn-primary text-xs cursor-pointer">
-                    Save & Regenerate
+      <div className="mb-6">
+        {isEditing ? (
+          // Full width editing
+          <div>
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+              rows={calculateRows(editContent)}
+              autoFocus
+            />
+            <div className="flex gap-2 mt-2">
+              <button onClick={handleSaveOnly} className="btn-primary text-xs cursor-pointer">
+                Save
+              </button>
+              <button onClick={handleSaveEdit} className="btn-primary text-xs cursor-pointer">
+                Save & Regenerate
+              </button>
+              <button onClick={handleCancelEdit} className="btn-secondary text-xs cursor-pointer">
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          // Right-aligned bubble for display
+          <div className="flex justify-end">
+            <div className="flex items-start gap-3 max-w-[80%]">
+              <div className="flex-1 min-w-0">
+                <div className="text-right">
+                  <div className="inline-block text-left bg-brand-600/20 rounded-2xl px-4 py-2.5 text-sm text-foreground whitespace-pre-wrap">
+                    {message.content}
+                  </div>
+                  <div className="flex justify-end gap-3 mt-3">
+                    <button
+                      onClick={handleCopy}
+                      className="text-xs text-muted-foreground hover:text-foreground transition flex items-center gap-1 cursor-pointer"
+                      disabled={isStreaming}
+                    >
+                    {copySuccess ? (
+                      <>
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                          />
+                        </svg>
+                        Copy
+                      </>
+                    )}
                   </button>
-                  <button onClick={handleCancelEdit} className="btn-secondary text-xs cursor-pointer">
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-right">
-                <div className="inline-block text-left bg-brand-600/20 rounded-2xl px-4 py-2.5 text-sm text-foreground whitespace-pre-wrap">
-                  {message.content}
-                </div>
-                <div className="flex justify-end gap-3 mt-3">
+
                   <button
                     onClick={() => setIsEditing(true)}
                     className="text-xs text-muted-foreground hover:text-foreground transition flex items-center gap-1 cursor-pointer"
@@ -100,14 +149,31 @@ export function ChatMessage({
                     </svg>
                     Edit
                   </button>
+
+                  <button
+                    onClick={onDelete}
+                    className="text-xs text-muted-foreground hover:text-red-400 transition flex items-center gap-1 cursor-pointer"
+                    disabled={isStreaming}
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                    Delete
+                  </button>
                 </div>
               </div>
-            )}
-          </div>
-          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-white text-sm font-semibold">
-            U
+            </div>
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-white text-sm font-semibold">
+              U
+            </div>
           </div>
         </div>
+        )}
       </div>
     )
   }
@@ -220,6 +286,22 @@ export function ChatMessage({
                   Regenerate
                 </button>
               )}
+
+              <button
+                onClick={onDelete}
+                className="text-xs text-muted-foreground hover:text-red-400 transition flex items-center gap-1 cursor-pointer"
+                disabled={isStreaming}
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+                Delete
+              </button>
             </div>
             </div>
           )}
