@@ -31,7 +31,7 @@ function CodeBlock({
   }
 
   return (
-    <div className="relative group">
+    <div className="relative group w-full max-w-full">
       {/* Language label and copy button */}
       <div className="flex items-center justify-between px-4 py-2 bg-card border border-border border-b-0 rounded-t-lg">
         <span className="text-xs text-muted-foreground font-mono">
@@ -117,7 +117,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   const processedContent = isStreaming ? parseIncompleteMarkdown(content) : content
 
   return (
-    <div className="text-foreground text-sm leading-relaxed">
+    <div className="text-foreground text-sm leading-relaxed w-full max-w-full overflow-hidden">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeKatex, rehypeHighlight]}
@@ -184,7 +184,10 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
             // Extract raw code and language from the code element
             const codeElement = children as any
             const className = codeElement?.props?.className || ''
-            const language = className.replace('language-', '')
+
+            // Extract language from className (handles "hljs language-python" or "language-python")
+            const languageMatch = className.match(/language-(\w+)/)
+            const language = languageMatch ? languageMatch[1] : ''
 
             // Extract raw text recursively from React elements
             const extractText = (node: any): string => {

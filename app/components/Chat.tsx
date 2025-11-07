@@ -39,6 +39,7 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
   const streamingMessageIdRef = useRef<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const exportMenuRef = useRef<HTMLDivElement>(null)
+  const isLoadingConversationRef = useRef(false)
 
   // Use Intersection Observer to track if bottom anchor is visible
   const { ref: messagesEndRef, inView: isAtBottom } = useInView({
@@ -115,8 +116,11 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
   useEffect(() => {
     if (!conversationId) {
       setMessages([])
+      isLoadingConversationRef.current = false
       return
     }
+
+    isLoadingConversationRef.current = true
 
     async function loadConvo() {
       const conversation = await getConversation(conversationId!)
@@ -145,13 +149,18 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
       } else {
         setMessages([])
       }
+
+      isLoadingConversationRef.current = false
     }
     loadConvo()
-  }, [conversationId, onConversationLoad])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId]) // Only reload when conversationId changes, not when callback changes
 
   // Save messages to IndexedDB whenever they change
+  // Don't save while loading to prevent race condition where old messages get saved to new conversation
   useEffect(() => {
-    if (conversationId && messages.length > 0) {
+    if (conversationId && messages.length > 0 && !isLoadingConversationRef.current) {
+      console.log('[Chat] Saving messages to conversation:', conversationId, 'count:', messages.length)
       saveMessages(conversationId, messages)
     }
   }, [messages, conversationId])
@@ -495,7 +504,7 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="flex flex-col flex-1 min-h-0 min-w-0">
       {/* Error banner */}
       {error && (
         <div className="mb-4 p-3 bg-danger/10 border border-danger/30 rounded-lg flex items-start gap-2">
@@ -527,7 +536,7 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
       )}
 
       {/* Messages - Flex-grow and scroll */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden mb-4 pt-4">
+      <div ref={messagesContainerRef} className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden mb-4 pt-4">
         {messages.length === 0 ? (
           <div className="h-full flex items-center justify-center text-muted-foreground">
             <div className="text-center max-w-md">

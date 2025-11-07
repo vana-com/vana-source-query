@@ -1584,7 +1584,7 @@ export default function Home() {
                               setSelectedRepos(newSet);
                             }}
                             aria-selected={isSelected}
-                            className="group w-full text-left px-3 py-3 border-b border-border/50 transition focus-ring hover:bg-card"
+                            className="group w-full text-left px-3 py-3 border-b border-border/50 transition focus-ring hover:bg-card cursor-pointer"
                           >
                             <div className="flex items-center gap-3">
                               {/* Checkmark - only visible when selected */}
@@ -2002,7 +2002,7 @@ export default function Home() {
           </aside>
 
           {/* Right Pane: Controls & Results */}
-          <div className="flex flex-col px-6 sm:px-8 lg:px-12 min-h-[calc(100vh-4rem)] lg:min-h-screen">
+          <div className="flex flex-col px-6 sm:px-8 lg:px-12 min-h-[calc(100vh-4rem)] lg:min-h-screen min-w-0">
             {/* Global error banner */}
             {error && selectedRepos.size > 0 && (
               <div className="mb-6 p-4 bg-danger/10 border border-danger/30 rounded-xl flex items-start gap-3">
