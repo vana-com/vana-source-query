@@ -698,6 +698,14 @@ export default function Home() {
       );
       setConversations([newConvo, ...conversations]);
       setActiveConversationId(newConvo.id);
+
+      // Clear repo selections and packed result for fresh start
+      setSelectedRepos(new Set());
+      setRepoBranches({});
+      setPackResult(null);
+      setTokenResult(null);
+      setError(null);
+      console.log("[page] Created new blank conversation");
     } catch (error) {
       console.error("Failed to create conversation:", error);
     }
@@ -708,7 +716,7 @@ export default function Home() {
   };
 
   const handleConversationLoad = (repoSelections: RepoSelection[]) => {
-    // Restore repo selections when conversation loads
+    // Restore repo selections when conversation loads (or clear if empty)
     console.log("[page] Restoring repo selections:", repoSelections);
 
     // Convert RepoSelection[] to Set<string> for selectedRepos
@@ -723,6 +731,11 @@ export default function Home() {
       }
     });
     setRepoBranches(branchOverrides);
+
+    // Clear pack results when switching conversations
+    // User needs to re-pack if they want to see context for this conversation
+    setPackResult(null);
+    setTokenResult(null);
   };
 
   const handleRenameConversation = async (

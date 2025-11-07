@@ -136,10 +136,11 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
           setMessages([])
         }
 
-        // Notify parent of repo selections if they exist
-        if (conversation.repoSelections && conversation.repoSelections.length > 0 && onConversationLoad) {
-          console.log('[Chat] Notifying parent of repo selections:', conversation.repoSelections)
-          onConversationLoad(conversation.repoSelections)
+        // Always notify parent of repo selections (even if empty) for consistent state
+        if (onConversationLoad) {
+          const selections = conversation.repoSelections || []
+          console.log('[Chat] Notifying parent of repo selections:', selections)
+          onConversationLoad(selections)
         }
       } else {
         setMessages([])
