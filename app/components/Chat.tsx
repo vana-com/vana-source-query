@@ -46,39 +46,35 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
   })
 
   // Count tokens for current conversation state
-  // Mirrors EXACTLY what chat API sends to Gemini
+  // Shows total tokens for the conversation including all messages
   const countConversationTokens = useCallback(async () => {
-    if (!geminiApiKey || messages.length === 0) {
+    if (!geminiApiKey) {
+      setConversationTokens(null)
+      return
+    }
+
+    if (messages.length === 0) {
       setConversationTokens(null)
       return
     }
 
     setCountingTokens(true)
     try {
-      // Build the EXACT same context as chat API does
-      const conversationHistory = messages.slice(0, -1).map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      }))
-
-      const lastMessage = messages[messages.length - 1]
-
-      // Format conversation history exactly as chat API does
+      // Build context with ALL current messages
+      // This shows the current state of the conversation
       let fullContext = packedContext
-      if (conversationHistory.length > 0) {
-        const historyText = conversationHistory
+
+      if (messages.length > 0) {
+        const historyText = messages
           .map((msg) => {
             const role = msg.role === 'user' ? 'User' : 'Assistant'
             return `${role}: ${msg.content}`
           })
           .join('\n\n')
-        fullContext = `${packedContext}\n\n# Previous Conversation\n${historyText}`
+        fullContext = `${packedContext}\n\n# Conversation\n${historyText}`
       }
 
-      // Add current message exactly as gemini.ts does
-      const finalText = `${fullContext}\n\n# User Prompt\n${lastMessage.content}`
-
-      console.log('[Chat] Counting tokens for', finalText.length, 'chars')
+      console.log('[Chat] Counting tokens for conversation:', messages.length, 'messages,', fullContext.length, 'chars')
 
       const response = await fetch('/api/tokens', {
         method: 'POST',
@@ -88,8 +84,7 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
         },
         body: JSON.stringify({
           modelId,
-          contextText: finalText,
-          // No separate userPrompt - it's already in finalText
+          contextText: fullContext,
         }),
       })
 
@@ -100,7 +95,7 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
       }
 
       const result = await response.json()
-      console.log('[Chat] Conversation tokens:', result.data)
+      console.log('[Chat] Conversation tokens:', result.data.totalTokens)
 
       setConversationTokens({
         totalTokens: result.data.totalTokens,
@@ -126,6 +121,15 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
       const conversation = await getConversation(conversationId!)
       if (conversation && conversation.messages.length > 0) {
         setMessages(conversation.messages)
+
+        // Scroll to bottom after loading messages
+        setTimeout(() => {
+          const container = messagesContainerRef.current
+          if (container) {
+            container.scrollTop = container.scrollHeight
+            console.log('[Chat] Scrolled to bottom after loading conversation')
+          }
+        }, 100)
       } else {
         setMessages([])
       }
@@ -142,10 +146,19 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
 
   // Count tokens whenever messages change (after streaming completes)
   useEffect(() => {
-    if (!streaming && messages.length > 0) {
+    console.log('[Chat] Token count useEffect triggered:', {
+      streaming,
+      messageCount: messages.length,
+      hasApiKey: !!geminiApiKey
+    })
+    if (!streaming && messages.length > 0 && geminiApiKey) {
+      console.log('[Chat] Triggering token count update')
       countConversationTokens()
+    } else if (messages.length === 0) {
+      console.log('[Chat] No messages, clearing token count')
+      setConversationTokens(null)
     }
-  }, [messages, streaming, countConversationTokens])
+  }, [messages, streaming, countConversationTokens, geminiApiKey])
 
   // Auto-scroll when messages change if we're at bottom
   useEffect(() => {
