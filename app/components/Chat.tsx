@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useInView } from 'react-intersection-observer'
-import { Message, ChatStreamEvent } from '@/lib/types'
+import { Message, ChatStreamEvent, RepoSelection } from '@/lib/types'
 import { getConversation, saveMessages, deleteConversation } from '@/lib/chatDb'
 import { ChatMessage } from './ChatMessage'
 
@@ -13,13 +13,14 @@ interface ChatProps {
   modelId: string
   thinkingBudget?: number
   onFirstMessage?: (messageContent: string) => void // Callback when first message is sent
+  onConversationLoad?: (repoSelections: RepoSelection[]) => void // Callback when conversation loads with repo selections
 }
 
 /**
  * Main chat interface component
  * Handles message state, persistence, streaming, and user interactions
  */
-export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thinkingBudget, onFirstMessage }: ChatProps) {
+export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thinkingBudget, onFirstMessage, onConversationLoad }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -119,23 +120,33 @@ export function Chat({ packedContext, conversationId, geminiApiKey, modelId, thi
 
     async function loadConvo() {
       const conversation = await getConversation(conversationId!)
-      if (conversation && conversation.messages.length > 0) {
-        setMessages(conversation.messages)
+      if (conversation) {
+        if (conversation.messages.length > 0) {
+          setMessages(conversation.messages)
 
-        // Scroll to bottom after loading messages
-        setTimeout(() => {
-          const container = messagesContainerRef.current
-          if (container) {
-            container.scrollTop = container.scrollHeight
-            console.log('[Chat] Scrolled to bottom after loading conversation')
-          }
-        }, 100)
+          // Scroll to bottom after loading messages
+          setTimeout(() => {
+            const container = messagesContainerRef.current
+            if (container) {
+              container.scrollTop = container.scrollHeight
+              console.log('[Chat] Scrolled to bottom after loading conversation')
+            }
+          }, 100)
+        } else {
+          setMessages([])
+        }
+
+        // Notify parent of repo selections if they exist
+        if (conversation.repoSelections && conversation.repoSelections.length > 0 && onConversationLoad) {
+          console.log('[Chat] Notifying parent of repo selections:', conversation.repoSelections)
+          onConversationLoad(conversation.repoSelections)
+        }
       } else {
         setMessages([])
       }
     }
     loadConvo()
-  }, [conversationId])
+  }, [conversationId, onConversationLoad])
 
   // Save messages to IndexedDB whenever they change
   useEffect(() => {

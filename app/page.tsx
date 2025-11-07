@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import {
   GitHubRepo,
+  RepoSelection,
   SliceConfig,
   PackResult,
   TokenCountResult,
@@ -527,6 +528,12 @@ export default function Home() {
 
       setPackResult(result);
 
+      // Save repo selections to active conversation
+      if (activeConversationId) {
+        await updateConversation(activeConversationId, { repoSelections });
+        console.log("[page] Saved repo selections to conversation:", repoSelections);
+      }
+
       // Auto-count tokens with Gemini (will update the estimate)
       if (!abortController.signal.aborted) {
         await handleCountTokens(result, abortController.signal);
@@ -698,6 +705,24 @@ export default function Home() {
 
   const handleSwitchConversation = (conversationId: string) => {
     setActiveConversationId(conversationId);
+  };
+
+  const handleConversationLoad = (repoSelections: RepoSelection[]) => {
+    // Restore repo selections when conversation loads
+    console.log("[page] Restoring repo selections:", repoSelections);
+
+    // Convert RepoSelection[] to Set<string> for selectedRepos
+    const repoNames = new Set(repoSelections.map(r => r.fullName));
+    setSelectedRepos(repoNames);
+
+    // Restore branch overrides
+    const branchOverrides: Record<string, string> = {};
+    repoSelections.forEach(r => {
+      if (r.branch) {
+        branchOverrides[r.fullName] = r.branch;
+      }
+    });
+    setRepoBranches(branchOverrides);
   };
 
   const handleRenameConversation = async (
@@ -1936,6 +1961,7 @@ export default function Home() {
               <Chat
                 packedContext={getCompleteContext()}
                 conversationId={activeConversationId}
+                geminiApiKey={process.env.NEXT_PUBLIC_GEMINI_API_KEY}
                 modelId={geminiModel}
                 thinkingBudget={
                   availableModels.find((m) => m.name === geminiModel)
@@ -1944,6 +1970,7 @@ export default function Home() {
                     : undefined
                 }
                 onFirstMessage={handleFirstMessage}
+                onConversationLoad={handleConversationLoad}
               />
             )}
 

@@ -198,6 +198,7 @@ export interface Conversation {
   messages: Message[]
   createdAt: number
   lastUpdatedAt: number
+  repoSelections?: RepoSelection[] // Repos that were selected when this conversation was created
 }
 
 // Legacy - kept for migration reference
