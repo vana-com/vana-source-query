@@ -1004,7 +1004,7 @@ export default function Home() {
 
       {/* Two-pane layout */}
       <div className="flex pt-16 lg:pt-0">
-        <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] w-full max-w-[1600px] mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] w-full mx-auto">
           {/* Left Sidebar */}
           <aside
             className={`
@@ -1244,7 +1244,7 @@ export default function Home() {
                             </span>
 
                             {/* Hover actions - desktop only */}
-                            <div className="hidden group-hover:flex items-center gap-1 flex-shrink-0">
+                            <div className="hidden sm:flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -2049,7 +2049,6 @@ export default function Home() {
               <Chat
                 packedContext={getCompleteContext()}
                 conversationId={activeConversationId}
-                geminiApiKey={process.env.NEXT_PUBLIC_GEMINI_API_KEY}
                 modelId={geminiModel}
                 thinkingBudget={
                   availableModels.find((m) => m.name === geminiModel)

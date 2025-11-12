@@ -2,11 +2,10 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useInView } from "react-intersection-observer";
-import { Message, ChatStreamEvent, RepoSelection, Conversation } from "@/lib/types";
+import { Message, ChatStreamEvent, RepoSelection } from "@/lib/types";
 import {
   getConversation,
   saveMessages,
-  deleteConversation,
   updateConversation,
 } from "@/lib/chatDb";
 import { ChatMessage } from "./ChatMessage";
@@ -14,7 +13,6 @@ import { ChatMessage } from "./ChatMessage";
 interface ChatProps {
   packedContext: string;
   conversationId: string | null; // UUID of active conversation
-  geminiApiKey?: string;
   modelId: string;
   thinkingBudget?: number;
   onFirstMessage?: (messageContent: string) => void; // Callback when first message is sent
@@ -28,7 +26,6 @@ interface ChatProps {
 export function Chat({
   packedContext,
   conversationId,
-  geminiApiKey,
   modelId,
   thinkingBudget,
   onFirstMessage,
@@ -72,11 +69,6 @@ export function Chat({
   // Count tokens for current conversation state
   // Shows total tokens for the conversation including all messages
   const countConversationTokens = useCallback(async () => {
-    if (!geminiApiKey) {
-      setConversationTokens(null);
-      return;
-    }
-
     if (messages.length === 0) {
       setConversationTokens(null);
       return;
@@ -110,7 +102,6 @@ export function Chat({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Gemini-Key": geminiApiKey,
         },
         body: JSON.stringify({
           modelId,
@@ -138,7 +129,7 @@ export function Chat({
     } finally {
       setCountingTokens(false);
     }
-  }, [geminiApiKey, messages, packedContext, modelId]);
+  }, [messages, packedContext, modelId]);
 
   // Count tokens for draft message (debounced)
   const countDraftTokens = useCallback((draftText: string) => {
@@ -175,7 +166,6 @@ export function Chat({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(geminiApiKey ? { "X-Gemini-Key": geminiApiKey } : {}),
           },
           body: JSON.stringify({
             modelId,
@@ -195,7 +185,7 @@ export function Chat({
         console.error("[Chat] Draft token counting error:", error);
       }
     }, 500);
-  }, [geminiApiKey, messages, packedContext, modelId]);
+  }, [messages, packedContext, modelId]);
 
   // Load conversation from IndexedDB when conversationId changes
   useEffect(() => {
@@ -297,10 +287,9 @@ export function Chat({
       streaming,
       messageCount,
       messagesHash: messagesHash.substring(0, 50),
-      hasApiKey: !!geminiApiKey,
     });
 
-    if (!streaming && messageCount > 0 && geminiApiKey) {
+    if (!streaming && messageCount > 0) {
       console.log("[Chat] Calling countConversationTokens()");
       countConversationTokens();
     } else if (messageCount === 0) {
@@ -309,7 +298,7 @@ export function Chat({
     }
     // countConversationTokens is stable via useCallback
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, streaming, geminiApiKey]);
+  }, [messages, streaming]);
 
   // Auto-scroll when messages change if we're at bottom
   useEffect(() => {
@@ -430,7 +419,6 @@ export function Chat({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(geminiApiKey ? { "X-Gemini-Key": geminiApiKey } : {}),
         },
         signal: abortController.signal,
         body: JSON.stringify({
