@@ -155,8 +155,6 @@ export function Chat({
 
     // Debounce: wait 500ms after user stops typing
     draftCountTimeoutRef.current = setTimeout(async () => {
-      if (!geminiApiKey) return;
-
       try {
         // Build context with current messages + draft
         let fullContext = packedContext;
@@ -177,7 +175,7 @@ export function Chat({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-Gemini-Key": geminiApiKey,
+            ...(geminiApiKey ? { "X-Gemini-Key": geminiApiKey } : {}),
           },
           body: JSON.stringify({
             modelId,
