@@ -74,10 +74,29 @@ export async function POST(request: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          // Stream response chunks
-          for await (const chunk of client.chat(model, fullContext, userMessage, thinkingBudget)) {
-            const event: ChatStreamEvent = { type: 'chunk', text: chunk }
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+          // Stream response chunks and capture final usage metadata
+          const generator = client.chat(model, fullContext, userMessage, thinkingBudget)
+          let usageMetadata: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | undefined
+
+          for await (const chunk of generator) {
+            if (typeof chunk === 'string') {
+              const event: ChatStreamEvent = { type: 'chunk', text: chunk }
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+            } else {
+              // Final return value is usage metadata
+              usageMetadata = chunk
+            }
+          }
+
+          // Send usage metadata if available
+          if (usageMetadata) {
+            const usageEvent: ChatStreamEvent = {
+              type: 'usage',
+              promptTokens: usageMetadata.promptTokenCount,
+              outputTokens: usageMetadata.candidatesTokenCount,
+              totalTokens: usageMetadata.totalTokenCount,
+            }
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(usageEvent)}\n\n`))
           }
 
           // Send completion event

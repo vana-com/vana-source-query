@@ -303,18 +303,12 @@ export function Chat({
 
     // Capture isAtBottom NOW, before any DOM updates
     const shouldScroll = isAtBottom;
-    console.log("[Chat] Message update, isAtBottom:", shouldScroll);
 
     if (shouldScroll) {
-      console.log("[Chat] Scrolling to bottom");
-
       // Wait for DOM to update, then scroll
       requestAnimationFrame(() => {
         container.scrollTop = container.scrollHeight;
-        console.log("[Chat] Scrolled to scrollTop:", container.scrollTop);
       });
-    } else {
-      console.log("[Chat] User scrolled up, not auto-scrolling");
     }
   }, [messages, isAtBottom]);
 

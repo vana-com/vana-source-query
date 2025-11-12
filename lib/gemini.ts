@@ -76,14 +76,14 @@ export class GeminiClient {
 
   /**
    * Chat with Gemini using packed context
-   * @returns Async generator yielding response chunks
+   * @returns Async generator yielding response chunks, final value is usage metadata
    */
   async *chat(
     modelId: string,
     contextText: string,
     userPrompt: string,
     thinkingBudget?: number
-  ): AsyncGenerator<string, void, unknown> {
+  ): AsyncGenerator<string, { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | void, unknown> {
     try {
       console.log(`[gemini] Starting chat with model: ${modelId}, thinkingBudget: ${thinkingBudget}`)
 
@@ -111,6 +111,18 @@ export class GeminiClient {
         const text = chunk.text()
         if (text) {
           yield text
+        }
+      }
+
+      // Get usage metadata from final response
+      const response = await result.response
+      const usageMetadata = response.usageMetadata
+      if (usageMetadata) {
+        console.log('[gemini] Usage metadata:', usageMetadata)
+        return {
+          promptTokenCount: usageMetadata.promptTokenCount,
+          candidatesTokenCount: usageMetadata.candidatesTokenCount,
+          totalTokenCount: usageMetadata.totalTokenCount,
         }
       }
     } catch (error) {

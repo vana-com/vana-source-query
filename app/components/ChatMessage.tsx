@@ -68,19 +68,24 @@ export function ChatMessage({
     setTimeout(() => setCopySuccess(false), 2000)
   }
 
+  // Shared textarea component
+  const editTextarea = (
+    <textarea
+      value={editContent}
+      onChange={(e) => setEditContent(e.target.value)}
+      className="w-full rounded-lg border-2 border-border bg-card px-3 py-2 text-sm text-foreground focus:border-brand-500"
+      rows={calculateRows(editContent)}
+      autoFocus
+    />
+  )
+
   if (message.role === 'user') {
     return (
       <div className="mb-6">
         {isEditing ? (
           // Full width editing
           <div>
-            <textarea
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-              rows={calculateRows(editContent)}
-              autoFocus
-            />
+            {editTextarea}
             <div className="flex gap-2 mt-2">
               <button onClick={handleSaveOnly} className="btn-primary text-xs cursor-pointer">
                 Save
@@ -168,7 +173,7 @@ export function ChatMessage({
                 </div>
               </div>
             </div>
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-white text-sm font-semibold">
+            <div className="hidden sm:flex flex-shrink-0 w-8 h-8 rounded-full bg-brand-600 items-center justify-center text-white text-sm font-semibold">
               U
             </div>
           </div>
@@ -181,31 +186,27 @@ export function ChatMessage({
   // Model message
   return (
     <div className="mb-6">
-      <div className="flex items-start gap-3 max-w-[90%]">
-        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-muted-foreground text-sm font-semibold">
-          G
+      {isEditing ? (
+        // Full width editing
+        <div>
+          {editTextarea}
+          <div className="flex gap-2 mt-2">
+            <button onClick={handleSaveEdit} className="btn-primary text-xs cursor-pointer">
+              Save
+            </button>
+            <button onClick={handleCancelEdit} className="btn-secondary text-xs cursor-pointer">
+              Cancel
+            </button>
+          </div>
         </div>
-        <div className="flex-1 min-w-0 overflow-hidden">
-          {isEditing ? (
-            <div>
-              <textarea
-                value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                rows={calculateRows(editContent)}
-                autoFocus
-              />
-              <div className="flex gap-2 mt-2">
-                <button onClick={handleSaveEdit} className="btn-primary text-xs cursor-pointer">
-                  Save
-                </button>
-                <button onClick={handleCancelEdit} className="btn-secondary text-xs cursor-pointer">
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="overflow-hidden">
+      ) : (
+        // Left-aligned with avatar
+        <div className="flex items-start gap-3 max-w-[90%]">
+          <div className="hidden sm:flex flex-shrink-0 w-8 h-8 rounded-full bg-secondary items-center justify-center text-muted-foreground text-sm font-semibold">
+            G
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="min-w-0 overflow-hidden">
               <MarkdownRenderer content={message.content} isStreaming={isStreaming && isLastMessage} />
 
             {isStreaming && isLastMessage && (
@@ -301,9 +302,9 @@ export function ChatMessage({
               </button>
             </div>
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
