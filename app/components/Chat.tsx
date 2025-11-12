@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useInView } from "react-intersection-observer";
-import { Message, ChatStreamEvent, RepoSelection } from "@/lib/types";
+import { Message, ChatStreamEvent, RepoSelection, Conversation } from "@/lib/types";
 import {
   getConversation,
   saveMessages,
