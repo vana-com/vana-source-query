@@ -147,21 +147,7 @@ export function Chat({
     // Debounce: wait 500ms after user stops typing
     draftCountTimeoutRef.current = setTimeout(async () => {
       try {
-        // Build context with current messages + draft
-        let fullContext = packedContext;
-
-        if (messages.length > 0) {
-          const historyText = messages
-            .map((msg) => {
-              const role = msg.role === "user" ? "User" : "Assistant";
-              return `${role}: ${msg.content}`;
-            })
-            .join("\n\n");
-          fullContext = `${packedContext}\n\n# Conversation\n${historyText}`;
-        }
-
-        fullContext = `${fullContext}\n\nUser: ${draftText}`;
-
+        // Count ONLY the draft text (not full context - we add it to conversationTokens later)
         const response = await fetch("/api/tokens", {
           method: "POST",
           headers: {
@@ -169,7 +155,7 @@ export function Chat({
           },
           body: JSON.stringify({
             modelId,
-            contextText: fullContext,
+            contextText: draftText,
           }),
         });
 
@@ -180,12 +166,12 @@ export function Chat({
 
         const result = await response.json();
         setDraftTokens(result.data.totalTokens);
-        console.log("[Chat] Draft tokens:", result.data.totalTokens);
+        console.log("[Chat] Draft-only tokens:", result.data.totalTokens);
       } catch (error) {
         console.error("[Chat] Draft token counting error:", error);
       }
     }, 500);
-  }, [messages, packedContext, modelId]);
+  }, [modelId]);
 
   // Load conversation from IndexedDB when conversationId changes
   useEffect(() => {
@@ -849,11 +835,14 @@ export function Chat({
                   </div>
                 )}
                 {/* Draft tokens (while typing) */}
-                {draftTokens && (
+                {draftTokens && conversationTokens && (
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground">With draft:</span>
                     <span className="font-mono text-xs text-foreground">
-                      {draftTokens.toLocaleString()} tokens
+                      {(conversationTokens.totalTokens + draftTokens).toLocaleString()} tokens
+                      <span className="text-muted-foreground ml-1">
+                        (+{draftTokens.toLocaleString()})
+                      </span>
                     </span>
                   </div>
                 )}
