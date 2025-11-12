@@ -202,16 +202,15 @@ export function Chat({
         if (conversation.messages.length > 0) {
           setMessages(conversation.messages);
 
-          // Scroll to bottom after loading messages
-          setTimeout(() => {
-            const container = messagesContainerRef.current;
-            if (container) {
-              container.scrollTop = container.scrollHeight;
-              console.log(
-                "[Chat] Scrolled to bottom after loading conversation"
-              );
-            }
-          }, 100);
+          // Scroll to bottom after messages render
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              const container = messagesContainerRef.current;
+              if (container) {
+                container.scrollTop = container.scrollHeight;
+              }
+            });
+          });
         } else {
           setMessages([]);
         }
