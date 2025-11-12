@@ -53,6 +53,7 @@ export default function Home() {
   // Results
   const [packResult, setPackResult] = useState<PackResult | null>(null);
   const [tokenResult, setTokenResult] = useState<TokenCountResult | null>(null);
+  const [chatTokens, setChatTokens] = useState<number>(0); // Tokens from chat messages + draft
   const [userPrompt, setUserPrompt] = useState("");
   const [copiedMessage, setCopiedMessage] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -1082,7 +1083,7 @@ export default function Home() {
                         }`}
                         style={{
                           width: `${Math.min(
-                            (tokenResult!.totalTokens /
+                            ((tokenResult!.totalTokens + chatTokens) /
                               tokenResult!.modelLimit) *
                               100,
                             100
@@ -1115,7 +1116,7 @@ export default function Home() {
                             </span>
                           ) : (
                             <>
-                              {tokenResult!.totalTokens.toLocaleString()} /{" "}
+                              {(tokenResult!.totalTokens + chatTokens).toLocaleString()} /{" "}
                               {(tokenResult!.modelLimit / 1000000).toFixed(1)}M
                               tokens
                             </>
@@ -2058,6 +2059,7 @@ export default function Home() {
                 }
                 onFirstMessage={handleFirstMessage}
                 onConversationLoad={handleConversationLoad}
+                onTokenCountChange={setChatTokens}
               />
             )}
 

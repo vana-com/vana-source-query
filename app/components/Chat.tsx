@@ -17,6 +17,7 @@ interface ChatProps {
   thinkingBudget?: number;
   onFirstMessage?: (messageContent: string) => void; // Callback when first message is sent
   onConversationLoad?: (repoSelections: RepoSelection[]) => void; // Callback when conversation loads with repo selections
+  onTokenCountChange?: (tokens: number) => void; // Callback when chat+draft token count changes
 }
 
 /**
@@ -30,6 +31,7 @@ export function Chat({
   thinkingBudget,
   onFirstMessage,
   onConversationLoad,
+  onTokenCountChange,
 }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -285,6 +287,15 @@ export function Chat({
     // countConversationTokens is stable via useCallback
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, streaming]);
+
+  // Report chat+draft token count to parent
+  useEffect(() => {
+    if (onTokenCountChange) {
+      const chatTokens = conversationTokens?.totalTokens || 0;
+      const total = chatTokens + (draftTokens || 0);
+      onTokenCountChange(total);
+    }
+  }, [conversationTokens, draftTokens, onTokenCountChange]);
 
   // Auto-scroll when messages change if we're at bottom
   useEffect(() => {
@@ -802,65 +813,7 @@ export function Chat({
       </div>
 
       {/* Input - Sticky at bottom */}
-      <div className="flex-shrink-0 relative bg-background pt-3 border-t border-border">
-        {/* Token count display - always show when there are messages */}
-        {messages.length > 0 && (
-          <div className="px-3 pb-2 text-xs">
-            {countingTokens ? (
-              <div className="text-muted-foreground">Counting tokens...</div>
-            ) : (
-              <div className="space-y-1">
-                {/* Current conversation state */}
-                {conversationTokens && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">Current:</span>
-                    <span
-                      className={`font-mono text-xs ${
-                        conversationTokens.status === "over"
-                          ? "text-danger"
-                          : conversationTokens.status === "near"
-                          ? "text-warning"
-                          : "text-success"
-                      }`}
-                    >
-                      {conversationTokens.totalTokens.toLocaleString()} /{" "}
-                      {conversationTokens.modelLimit.toLocaleString()}
-                    </span>
-                    {conversationTokens.status === "over" && (
-                      <span className="text-danger text-xs">⚠ Over limit</span>
-                    )}
-                    {conversationTokens.status === "near" && (
-                      <span className="text-warning text-xs">⚠ Near limit</span>
-                    )}
-                  </div>
-                )}
-                {/* Draft tokens (while typing) */}
-                {draftTokens && conversationTokens && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">With draft:</span>
-                    <span className="font-mono text-xs text-foreground">
-                      {(conversationTokens.totalTokens + draftTokens).toLocaleString()} tokens
-                      <span className="text-muted-foreground ml-1">
-                        (+{draftTokens.toLocaleString()})
-                      </span>
-                    </span>
-                  </div>
-                )}
-                {/* Cumulative spent tokens */}
-                {cumulativeTokens && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">Total spent:</span>
-                    <span className="font-mono text-xs text-foreground">
-                      {cumulativeTokens.totalPromptTokens.toLocaleString()} in,{" "}
-                      {cumulativeTokens.totalOutputTokens.toLocaleString()} out
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
+      <div className="flex-shrink-0 relative bg-background">
         <div className="relative inline-block w-full">
           <textarea
             ref={textareaRef}
