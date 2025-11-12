@@ -187,9 +187,19 @@ export interface ChatRequest {
 }
 
 export interface ChatStreamEvent {
-  type: 'chunk' | 'complete' | 'error'
+  type: 'chunk' | 'complete' | 'error' | 'usage'
   text?: string
   error?: string
+  promptTokens?: number
+  outputTokens?: number
+  totalTokens?: number
+}
+
+export interface TokenUsageEntry {
+  timestamp: number
+  promptTokens: number
+  outputTokens: number
+  messageId: string // Which message this usage is for
 }
 
 export interface Conversation {
@@ -199,6 +209,11 @@ export interface Conversation {
   createdAt: number
   lastUpdatedAt: number
   repoSelections?: RepoSelection[] // Repos that were selected when this conversation was created
+  tokenUsage?: {
+    totalPromptTokens: number // Cumulative input tokens across all API calls
+    totalOutputTokens: number // Cumulative output tokens across all responses
+    history: TokenUsageEntry[] // Audit trail of all API calls
+  }
 }
 
 // Legacy - kept for migration reference
