@@ -656,6 +656,19 @@ export default function Home() {
     );
   };
 
+  // Get packed repos WITHOUT any user prompt header
+  // Used by Chat component to avoid stale prompts in conversation exports
+  const getPackedReposOnly = (): string => {
+    if (!packResult) return "";
+
+    // Assemble context from packed repos WITHOUT prompt
+    // Chat component will add conversation-specific context
+    return assemblePackedContext(
+      packResult.repos.filter((r) => !r.error),
+      undefined // No prompt - just pure packed repos
+    );
+  };
+
   const handleOpenInAI = async (platform: string, url: string) => {
     if (!packResult) return;
 
@@ -2048,7 +2061,7 @@ export default function Home() {
             {/* Chat Interface - Main CTA */}
             {activeConversationId && (
               <Chat
-                packedContext={getCompleteContext()}
+                packedContext={getPackedReposOnly()}
                 conversationId={activeConversationId}
                 modelId={geminiModel}
                 thinkingBudget={
