@@ -184,6 +184,7 @@ export interface ChatRequest {
   }>
   modelId?: string
   thinkingBudget?: number // -1=auto/dynamic, 0=off, 32768=maximum
+  systemPrompt?: string // Optional custom system instruction
 }
 
 export interface ChatStreamEvent {

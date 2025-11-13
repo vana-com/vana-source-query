@@ -15,6 +15,7 @@ interface ChatProps {
   conversationId: string | null; // UUID of active conversation
   modelId: string;
   thinkingBudget?: number;
+  systemPrompt?: string; // Custom system instruction
   onFirstMessage?: (messageContent: string) => void; // Callback when first message is sent
   onConversationLoad?: (repoSelections: RepoSelection[]) => void; // Callback when conversation loads with repo selections
   onTokenCountChange?: (tokens: number) => void; // Callback when chat+draft token count changes
@@ -29,6 +30,7 @@ export function Chat({
   conversationId,
   modelId,
   thinkingBudget,
+  systemPrompt,
   onFirstMessage,
   onConversationLoad,
   onTokenCountChange,
@@ -418,6 +420,7 @@ export function Chat({
             conversationHistory.length > 0 ? conversationHistory : undefined,
           modelId,
           thinkingBudget,
+          systemPrompt,
         }),
       });
 
@@ -617,7 +620,14 @@ export function Chat({
   };
 
   const formatFullExport = (includeDraft: boolean = false) => {
-    let export_text = `# Packed Repository Context\n\n${packedContext}\n\n`;
+    let export_text = '';
+
+    // Include system instructions if customized
+    if (systemPrompt && systemPrompt.trim()) {
+      export_text += `# System Instructions\n\n${systemPrompt.trim()}\n\n---\n\n`;
+    }
+
+    export_text += `# Packed Repository Context\n\n${packedContext}\n\n`;
 
     if (messages.length > 0 || (includeDraft && input.trim())) {
       export_text += `# Conversation History\n\n`;

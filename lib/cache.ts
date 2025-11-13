@@ -25,6 +25,7 @@ export interface VanaQueryCache {
   }> // Optional for backward compatibility
   geminiModel?: string // Optional for backward compatibility
   thinkingBudget?: number // Optional for backward compatibility (-1=auto, 32768=maximum, 0=off)
+  systemPrompt?: string // Optional for backward compatibility (custom system instruction)
 }
 
 const CACHE_KEY = 'vana-query-cache'
@@ -42,6 +43,7 @@ const defaultCache: VanaQueryCache = {
   externalRepos: [],
   geminiModel: config.gemini.defaultModel,
   thinkingBudget: -1, // Auto (dynamic) by default
+  systemPrompt: '', // Empty = use default from gemini.ts
 }
 
 /**

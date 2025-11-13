@@ -15,6 +15,7 @@ import { loadCache, saveCache } from "@/lib/cache";
 import { Spinner } from "@/app/components/Spinner";
 import { assemblePackedContext } from "@/lib/assembly";
 import { Chat } from "@/app/components/Chat";
+import { SystemPromptField } from "@/app/components/SystemPromptField";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
 import {
   listConversations,
@@ -82,6 +83,7 @@ export default function Home() {
     config.gemini.defaultModel
   );
   const [thinkingBudget, setThinkingBudget] = useState<number>(-1); // Default to auto (dynamic)
+  const [systemPrompt, setSystemPrompt] = useState<string>(''); // Empty = use default
 
   // Track last packed state to avoid unnecessary repacks
   const [lastPackedState, setLastPackedState] = useState<string | null>(null);
@@ -128,6 +130,7 @@ export default function Home() {
     setUserPrompt(cache.userPrompt);
     setGeminiModel(cache.geminiModel ?? config.gemini.defaultModel);
     setThinkingBudget(cache.thinkingBudget ?? -1); // Default auto
+    setSystemPrompt(cache.systemPrompt ?? ''); // Empty = use default
     // Load external repos from cache
     if (cache.externalRepos && cache.externalRepos.length > 0) {
       const externalReposMap = new Map(
@@ -270,6 +273,7 @@ export default function Home() {
       externalRepos: Array.from(addedExternalRepos.values()),
       geminiModel,
       thinkingBudget,
+      systemPrompt,
     });
   }, [
     cacheLoaded,
@@ -284,6 +288,7 @@ export default function Home() {
     addedExternalRepos,
     geminiModel,
     thinkingBudget,
+    systemPrompt,
   ]);
 
   // Generate state hash for comparison (excludes userPrompt - prompt changes only recount tokens)
@@ -1956,6 +1961,12 @@ export default function Home() {
                 </label>
               </div>
 
+              {/* System Instructions */}
+              <SystemPromptField
+                value={systemPrompt}
+                onChange={setSystemPrompt}
+              />
+
               {/* Directory Structure */}
               {packResult && (
                 <div className="px-4 mt-6">
@@ -2070,6 +2081,7 @@ export default function Home() {
                     ? thinkingBudget
                     : undefined
                 }
+                systemPrompt={systemPrompt}
                 onFirstMessage={handleFirstMessage}
                 onConversationLoad={handleConversationLoad}
                 onTokenCountChange={setChatTokens}

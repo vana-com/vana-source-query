@@ -12,7 +12,7 @@ export const runtime = 'nodejs'
 export async function POST(request: NextRequest) {
   try {
     const body: ChatRequest = await request.json()
-    const { contextText, userMessage, conversationHistory, modelId, thinkingBudget } = body
+    const { contextText, userMessage, conversationHistory, modelId, thinkingBudget, systemPrompt } = body
 
     // Validation
     if (!userMessage) {
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       async start(controller) {
         try {
           // Stream response chunks and capture final usage metadata
-          const generator = client.chat(model, fullContext, userMessage, thinkingBudget)
+          const generator = client.chat(model, fullContext, userMessage, thinkingBudget, systemPrompt)
           let usageMetadata: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | undefined
 
           for await (const chunk of generator) {

@@ -82,7 +82,8 @@ export class GeminiClient {
     modelId: string,
     contextText: string,
     userPrompt: string,
-    thinkingBudget?: number
+    thinkingBudget?: number,
+    systemPrompt?: string
   ): AsyncGenerator<string, { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | void, unknown> {
     try {
       console.log(`[gemini] Starting chat with model: ${modelId}, thinkingBudget: ${thinkingBudget}`)
@@ -95,8 +96,12 @@ export class GeminiClient {
         generationConfig.thinkingConfig = { thinkingBudget }
       }
 
-      const modelConfig = {
+      // Use provided system prompt or sensible default
+      const defaultSystemPrompt = `You are a helpful assistant that explains code clearly to diverse audiences - from engineers to product managers to executives. The user has provided source code from GitHub repositories. Explain concepts at the appropriate level for the question asked. Be clear, accurate, and helpful.`
+
+      const modelConfig: any = {
         model: modelId,
+        systemInstruction: systemPrompt || defaultSystemPrompt,
         ...(Object.keys(generationConfig).length > 0 ? { generationConfig } : {})
       }
       console.log(`[gemini] Model config:`, modelConfig)
