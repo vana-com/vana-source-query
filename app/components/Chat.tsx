@@ -71,7 +71,8 @@ export function Chat({
   });
 
   // Count tokens for current conversation state
-  // Shows total tokens for the conversation including all messages
+  // Counts ONLY the conversation history (delta), not the packed context
+  // The parent will add this to the base packed context token count
   const countConversationTokens = useCallback(async () => {
     if (messages.length === 0) {
       setConversationTokens(null);
@@ -80,25 +81,20 @@ export function Chat({
 
     setCountingTokens(true);
     try {
-      // Build context with ALL current messages
-      // This shows the current state of the conversation
-      let fullContext = packedContext;
-
-      if (messages.length > 0) {
-        const historyText = messages
-          .map((msg) => {
-            const role = msg.role === "user" ? "User" : "Assistant";
-            return `${role}: ${msg.content}`;
-          })
-          .join("\n\n");
-        fullContext = `${packedContext}\n\n# Conversation\n${historyText}`;
-      }
+      // Count ONLY the conversation history (not packed context)
+      // This is a delta that gets added to the base context token count
+      const historyText = messages
+        .map((msg) => {
+          const role = msg.role === "user" ? "User" : "Assistant";
+          return `${role}: ${msg.content}`;
+        })
+        .join("\n\n");
 
       console.log(
-        "[Chat] Counting tokens for conversation:",
+        "[Chat] Counting tokens for conversation history only:",
         messages.length,
         "messages,",
-        fullContext.length,
+        historyText.length,
         "chars"
       );
 
@@ -109,7 +105,7 @@ export function Chat({
         },
         body: JSON.stringify({
           modelId,
-          contextText: fullContext,
+          contextText: historyText,
         }),
       });
 
@@ -120,7 +116,7 @@ export function Chat({
       }
 
       const result = await response.json();
-      console.log("[Chat] Conversation tokens:", result.data.totalTokens);
+      console.log("[Chat] Conversation history tokens (delta only):", result.data.totalTokens);
 
       setConversationTokens({
         totalTokens: result.data.totalTokens,
@@ -133,7 +129,7 @@ export function Chat({
     } finally {
       setCountingTokens(false);
     }
-  }, [messages, packedContext, modelId]);
+  }, [messages, modelId]);
 
   // Count tokens for draft message (debounced)
   const countDraftTokens = useCallback((draftText: string) => {
