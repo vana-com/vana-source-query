@@ -22,11 +22,12 @@ export class GitHubClient {
 
   /**
    * List repositories for an organization
+   * Fetches ALL repos using pagination (not just first 100)
    * @throws Error with clear message on failure
    */
   async listOrgRepos(org: string): Promise<GitHubRepo[]> {
     try {
-      const { data } = await this.octokit.rest.repos.listForOrg({
+      const data = await this.octokit.paginate(this.octokit.rest.repos.listForOrg, {
         org,
         type: 'all',
         per_page: 100,
@@ -34,6 +35,7 @@ export class GitHubClient {
         direction: 'desc',
       })
 
+      console.log(`[github] Fetched ${data.length} repos for org: ${org}`)
       return data.map(this.mapRepo)
     } catch (error) {
       throw this.handleError(error, `Failed to list repos for org: ${org}`)
@@ -42,11 +44,12 @@ export class GitHubClient {
 
   /**
    * List repositories for a user
+   * Fetches ALL repos using pagination (not just first 100)
    * @throws Error with clear message on failure
    */
   async listUserRepos(username: string): Promise<GitHubRepo[]> {
     try {
-      const { data } = await this.octokit.rest.repos.listForUser({
+      const data = await this.octokit.paginate(this.octokit.rest.repos.listForUser, {
         username,
         type: 'all',
         per_page: 100,
@@ -54,6 +57,7 @@ export class GitHubClient {
         direction: 'desc',
       })
 
+      console.log(`[github] Fetched ${data.length} repos for user: ${username}`)
       return data.map(this.mapRepo)
     } catch (error) {
       throw this.handleError(error, `Failed to list repos for user: ${username}`)
@@ -80,11 +84,12 @@ export class GitHubClient {
 
   /**
    * List organizations the authenticated user belongs to
+   * Fetches ALL orgs using pagination (not just first 100)
    * @throws Error with clear message on failure
    */
   async listUserOrgs(): Promise<Array<{ login: string; description: string | null }>> {
     try {
-      const { data } = await this.octokit.rest.orgs.listForAuthenticatedUser({
+      const data = await this.octokit.paginate(this.octokit.rest.orgs.listForAuthenticatedUser, {
         per_page: 100,
       })
 
@@ -119,6 +124,7 @@ export class GitHubClient {
 
   /**
    * List all branches for a repository
+   * Fetches ALL branches using pagination (not just first 100)
    * @throws Error with clear message on failure
    */
   async listBranches(fullName: string): Promise<string[]> {
@@ -128,7 +134,7 @@ export class GitHubClient {
         throw new Error(`Invalid repo format: ${fullName}. Expected: owner/repo`)
       }
 
-      const { data } = await this.octokit.rest.repos.listBranches({
+      const data = await this.octokit.paginate(this.octokit.rest.repos.listBranches, {
         owner,
         repo,
         per_page: 100,
