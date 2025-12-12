@@ -15,18 +15,47 @@ Users select repos from a GitHub org/user, configure glob filters and reducers, 
 ### Development
 ```bash
 npm run dev          # Start Next.js dev server (http://localhost:3000)
-npm run build        # Production build
+npm run dev:doppler  # Start with Doppler secrets (server mode)
+npm run build        # Production build (client-only mode)
+npm run build:db     # Production build with database migrations
 npm run start        # Start production server
 npm run lint         # Run ESLint
 npm run test:local   # Test Repomix packing against local fixture repo
 ```
 
+### Database Commands (Server Mode Only)
+```bash
+npm run db:generate  # Generate Prisma client
+npm run db:migrate   # Create and apply migrations (dev)
+npm run db:deploy    # Apply pending migrations (prod)
+npm run db:studio    # Open Prisma Studio GUI
+npm run db:status    # Check migration status
+npm run db:reset     # Reset database (caution!)
+```
+
 ### Environment Setup
+
+**Client-only mode** (default):
 Copy `.env.local.example` to `.env.local` and add:
 - `GITHUB_TOKEN`: GitHub PAT (classic or fine-grained)
 - `GEMINI_API_KEY`: Google Gemini API key
 
-**Important**: Users can also provide these via the web UI (not persisted).
+**Server mode** (optional, enables auth + shared cache):
+Set `DATABASE_URL` to enable server mode. Requires:
+- `DATABASE_URL`: Neon.tech PostgreSQL connection string
+- `DIRECT_DATABASE_URL`: Direct connection for migrations
+- `AUTH_SECRET`: NextAuth.js session encryption
+- `GITHUB_CLIENT_ID`: GitHub OAuth app client ID
+- `GITHUB_CLIENT_SECRET`: GitHub OAuth app client secret
+- `NEXTAUTH_URL`: Application URL for OAuth callbacks
+
+Use Doppler for secrets management:
+```bash
+doppler setup --project vana-query --config dev_personal
+doppler run -- npm run dev
+```
+
+**Important**: Users can also provide tokens via the web UI (not persisted).
 
 ## Architecture
 
@@ -37,8 +66,31 @@ Copy `.env.local.example` to `.env.local` and add:
 - **Chat**: Google Gemini API with streaming responses
 - **Repo Listing**: Octokit (GitHub REST API)
 - **UI**: React 19 + Tailwind CSS 4
-- **State**: Client-side only, no database
-- **Persistence**: localStorage (settings/selections) + IndexedDB (pack cache, chat history)
+- **Auth**: NextAuth.js v5 with GitHub OAuth (server mode only)
+- **ORM**: Prisma with @prisma/adapter-pg (server mode only)
+- **Database**: Neon.tech serverless PostgreSQL (optional)
+- **State**: Client-side React state
+- **Persistence**:
+  - **Client mode**: localStorage (settings) + IndexedDB (cache, chat)
+  - **Server mode**: Postgres (shared cache, conversations) + localStorage (settings)
+
+### Operating Modes
+
+The app supports two modes based on whether `DATABASE_URL` is configured:
+
+**Client-only mode** (default):
+- No authentication, manual token entry
+- IndexedDB for pack cache (per-browser)
+- IndexedDB for conversations (per-browser)
+- Works offline after initial load
+
+**Server mode** (when DATABASE_URL set):
+- GitHub OAuth authentication (optional - users can still use without signing in)
+- Uses OAuth token for GitHub API when signed in
+- Postgres for pack cache (shared across users for whitelisted orgs only)
+- Postgres for conversations (per-user, cross-device sync)
+- Personal/non-whitelisted repos still use browser IndexedDB cache
+- Requires Neon.tech database + GitHub OAuth app
 
 ### Key Modules
 
@@ -53,6 +105,7 @@ Copy `.env.local.example` to `.env.local` and add:
 - Repomix limits: 1MB max file size, 50MB total per repo
 - Gemini models and token limits (1M–2M)
 - Cache configuration: staleness thresholds, LRU limits, auto-refresh
+- `sharedCacheOrgs`: Whitelist of orgs for Postgres cache (vana-com, opendatalabs, corsali)
 
 **lib/repomix.ts** — Repomix library integration:
 - `packRemoteRepo(options)`: Pack GitHub repos via archive download (no git binary needed)
@@ -80,6 +133,31 @@ Copy `.env.local.example` to `.env.local` and add:
 - Stores conversations with messages
 - Supports creating, listing, and deleting conversations
 - Persists user/assistant message history
+
+**lib/prisma.ts** — Prisma client singleton (server mode):
+- Initializes only when DATABASE_URL is set
+- Uses @prisma/adapter-pg for Neon connection pooling
+- Global singleton pattern to prevent connection exhaustion in dev
+
+**lib/auth.ts** — NextAuth.js configuration (server mode):
+- GitHub OAuth provider with repo scope
+- Stores access_token in session for API calls
+- Database adapter for persistent sessions
+
+**lib/db/packCache.server.ts** — Server-side pack cache (Postgres):
+- Shared cache for whitelisted orgs only (vana-com, opendatalabs, corsali)
+- Same repo + branch + SHA + configHash = cache hit (deterministic)
+- Personal repos never cached in Postgres (privacy)
+- LRU eviction for storage management
+
+**lib/db/conversations.server.ts** — Server-side conversations (Postgres):
+- Per-user conversation storage
+- Requires authentication
+- Messages stored as JSON array
+
+**lib/conversations.ts** — Conversation router:
+- Routes to IndexedDB or API based on auth state
+- Transparent switching for calling code
 
 **lib/assembly.ts** — Context assembly utilities:
 - Combines multiple packed repos with headers
@@ -113,6 +191,25 @@ All routes use `runtime = 'nodejs'` (NOT Edge) to support repomix library depend
 **GET /api/sha?repo=<fullName>&branch=<name>**
 - Headers: `X-GitHub-Token`
 - Returns: Latest commit SHA for a repo/branch (used for cache invalidation)
+
+**GET/POST /api/auth/[...nextauth]** (server mode only)
+- NextAuth.js handler for GitHub OAuth
+- GET: OAuth flow endpoints
+- POST: Session management
+
+**GET /api/conversations** (server mode only)
+- Requires authentication
+- Returns: List of conversations for authenticated user
+
+**POST /api/conversations** (server mode only)
+- Requires authentication
+- Body: `{ name?: string, repoSelections?: RepoSelection[] }`
+- Returns: Created conversation
+
+**GET/PATCH/DELETE /api/conversations/[id]** (server mode only)
+- Requires authentication
+- PATCH body: `{ name?, messages?, repoSelections?, tokenUsage? }`
+- Verifies user owns the conversation
 
 ### Data Flow
 
@@ -160,6 +257,21 @@ All routes use `runtime = 'nodejs'` (NOT Edge) to support repomix library depend
 - Stale entries (>7 days old OR SHA changed) marked for auto-refresh
 - LRU eviction when cache exceeds limits (100 entries, 50MB total)
 - Users can manually clear cache via UI
+
+### Two-Tier Caching (Server Mode)
+When DATABASE_URL is configured, pack caching uses two tiers:
+
+| Repo Type | Postgres (shared) | Browser IndexedDB |
+|-----------|-------------------|-------------------|
+| Whitelisted orgs (vana-com, etc.) | ✅ | ✅ |
+| Personal repos | ❌ | ✅ |
+| Other orgs | ❌ | ✅ |
+
+**Why this design**:
+- Org repos are shared work - caching benefits all team members
+- Personal repos may be private - never stored in shared database
+- Pack output is deterministic (same repo + branch + SHA + config = same output)
+- Anyone who can trigger a pack already has read access to the repo
 
 ## Repomix Integration Notes
 
@@ -473,35 +585,52 @@ Examples: Railway, Render, Fly.io, Google Cloud Run
 vana-query/
 ├── app/
 │   ├── page.tsx              # Main UI (repo selection, slice config, results, chat)
-│   ├── layout.tsx            # Root layout with metadata
+│   ├── layout.tsx            # Root layout with providers
 │   ├── components/
 │   │   ├── Chat.tsx          # Chat container
 │   │   ├── ChatMessage.tsx   # Individual message component
 │   │   ├── MarkdownRenderer.tsx  # Shared markdown renderer
 │   │   ├── Spinner.tsx       # Loading spinner
 │   │   ├── ThemeToggle.tsx   # Dark/light mode toggle
-│   │   └── ThemeProvider.tsx # Theme context provider
+│   │   ├── ThemeProvider.tsx # Theme context provider
+│   │   ├── AuthProvider.tsx  # NextAuth SessionProvider wrapper
+│   │   └── UserMenu.tsx      # Login/logout UI component
 │   └── api/
 │       ├── repos/route.ts    # List org/user repos
-│       ├── pack/route.ts     # Pack repos with Repomix
+│       ├── pack/route.ts     # Pack repos with Repomix + shared cache
 │       ├── tokens/route.ts   # Count tokens with Gemini
 │       ├── chat/route.ts     # Stream chat responses
-│       └── sha/route.ts      # Get latest commit SHA
+│       ├── sha/route.ts      # Get latest commit SHA
+│       ├── auth/[...nextauth]/route.ts  # NextAuth handler
+│       └── conversations/    # Server-mode conversation CRUD
+│           ├── route.ts      # List/create
+│           └── [id]/route.ts # Get/update/delete
 ├── lib/
 │   ├── types.ts              # SSOT for all interfaces
-│   ├── config.ts             # Timeouts, limits, model definitions, cache config
-│   ├── repomix.ts            # Repomix library integration + AI ignore fetching
+│   ├── config.ts             # Timeouts, limits, model definitions
+│   ├── repomix.ts            # Repomix library integration
 │   ├── github.ts             # GitHub API client
 │   ├── gemini.ts             # Gemini API client (tokens + chat)
 │   ├── assembly.ts           # Context assembly helpers
 │   ├── cache.ts              # localStorage persistence
-│   ├── packCache.ts          # IndexedDB pack cache
-│   └── chatDb.ts             # IndexedDB chat history
+│   ├── packCache.ts          # IndexedDB pack cache (client mode)
+│   ├── chatDb.ts             # IndexedDB chat history (client mode)
+│   ├── conversations.ts      # Conversation router (client/server)
+│   ├── prisma.ts             # Prisma client singleton (server mode)
+│   ├── auth.ts               # NextAuth config (server mode)
+│   └── db/
+│       ├── packCache.server.ts      # Postgres pack cache
+│       └── conversations.server.ts  # Postgres conversations
+├── prisma/
+│   ├── schema.prisma         # Database schema
+│   └── migrations/           # Prisma migrations
 ├── test/
 │   ├── fixtures/sample-repo/ # Test repo for local packing
 │   ├── local-test.ts         # Integration test (no external APIs)
 │   └── local-runner.js       # Test runner (tsx)
 ├── next.config.js            # Next.js config (serverExternalPackages)
+├── prisma.config.ts          # Prisma CLI config (for migrations)
+├── doppler.yaml              # Doppler project config
 ├── .env.local.example        # Environment template
 ├── CLAUDE.md                 # This file
 └── README.md                 # User-facing docs

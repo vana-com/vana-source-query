@@ -1,0 +1,3 @@
+setup:
+  project: vana-query
+  config: dev_personal

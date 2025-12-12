@@ -39,3 +39,6 @@ next-env.d.ts
 
 # Repomix output
 repomix-output.txt
+
+# Prisma generated client
+/src/generated

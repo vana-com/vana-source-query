@@ -103,6 +103,27 @@ export class GitHubClient {
   }
 
   /**
+   * List repositories for the authenticated user (personal repos)
+   * Fetches ALL repos using pagination (not just first 100)
+   * @throws Error with clear message on failure
+   */
+  async listAuthenticatedUserRepos(): Promise<GitHubRepo[]> {
+    try {
+      const data = await this.octokit.paginate(this.octokit.rest.repos.listForAuthenticatedUser, {
+        per_page: 100,
+        sort: 'pushed',
+        direction: 'desc',
+        affiliation: 'owner', // Only personal repos, not org repos
+      })
+
+      console.log(`[github] Fetched ${data.length} personal repos for authenticated user`)
+      return data.map(this.mapRepo)
+    } catch (error) {
+      throw this.handleError(error, 'Failed to list repos for authenticated user')
+    }
+  }
+
+  /**
    * Validate that the token has required permissions
    * @throws Error if token is invalid or lacks permissions
    */

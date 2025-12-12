@@ -7,7 +7,7 @@ import {
   getConversation,
   saveMessages,
   updateConversation,
-} from "@/lib/chatDb";
+} from "@/lib/conversations";
 import { ChatMessage } from "./ChatMessage";
 
 interface ChatProps {
@@ -16,6 +16,7 @@ interface ChatProps {
   modelId: string;
   thinkingBudget?: number;
   systemPrompt?: string; // Custom system instruction
+  isAuthenticated: boolean; // Whether user is logged in (for server vs IndexedDB routing)
   onFirstMessage?: (messageContent: string) => void; // Callback when first message is sent
   onConversationLoad?: (repoSelections: RepoSelection[]) => void; // Callback when conversation loads with repo selections
   onTokenCountChange?: (tokens: number) => void; // Callback when chat+draft token count changes
@@ -31,6 +32,7 @@ export function Chat({
   modelId,
   thinkingBudget,
   systemPrompt,
+  isAuthenticated,
   onFirstMessage,
   onConversationLoad,
   onTokenCountChange,
@@ -189,7 +191,7 @@ export function Chat({
     const loadingConversationId = conversationId;
 
     async function loadConvo() {
-      const conversation = await getConversation(loadingConversationId);
+      const conversation = await getConversation(loadingConversationId, isAuthenticated);
 
       // Ignore stale load if conversation changed while loading
       if (conversationId !== loadingConversationId) {
@@ -259,9 +261,9 @@ export function Chat({
       messages.length > 0 &&
       !isLoadingConversationRef.current
     ) {
-      saveMessages(conversationId, messages);
+      saveMessages(conversationId, messages, isAuthenticated);
     }
-  }, [messages, conversationId]);
+  }, [messages, conversationId, isAuthenticated]);
 
   // Count tokens whenever messages change (after streaming completes)
   useEffect(() => {
@@ -490,7 +492,7 @@ export function Chat({
                   const messageId = streamingMessageIdRef.current;
 
                   // Update conversation in background (don't block UI)
-                  getConversation(conversationId).then(convo => {
+                  getConversation(conversationId, isAuthenticated).then(convo => {
                     if (!convo) return;
 
                     const currentUsage = convo.tokenUsage || {
@@ -513,7 +515,7 @@ export function Chat({
                       ],
                     };
 
-                    updateConversation(conversationId, { tokenUsage: updatedUsage });
+                    updateConversation(conversationId, isAuthenticated, { tokenUsage: updatedUsage });
                     console.log("[Chat] Updated conversation token usage:", updatedUsage);
 
                     // Update state immediately
@@ -559,9 +561,9 @@ export function Chat({
     );
     setMessages(updatedMessages);
 
-    // Persist to IndexedDB
+    // Persist to storage
     if (conversationId) {
-      saveMessages(conversationId, updatedMessages);
+      saveMessages(conversationId, updatedMessages, isAuthenticated);
     }
 
     // Recount tokens after edit
@@ -609,9 +611,9 @@ export function Chat({
     const updatedMessages = messages.filter((_, idx) => idx !== messageIndex);
     setMessages(updatedMessages);
 
-    // Persist to IndexedDB
+    // Persist to storage
     if (conversationId) {
-      saveMessages(conversationId, updatedMessages);
+      saveMessages(conversationId, updatedMessages, isAuthenticated);
     }
   };
 

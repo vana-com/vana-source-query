@@ -42,4 +42,8 @@ export const CACHE_CONFIG = {
   dbName: "vana-pack-cache",
   dbVersion: 2, // Incremented to force schema recreation
   storeName: "packs",
+
+  // Postgres shared cache - only repos from these orgs are cached server-side
+  // Personal repos use browser IndexedDB only
+  sharedCacheOrgs: ["vana-com", "opendatalabs", "corsali"],
 };

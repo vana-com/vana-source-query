@@ -1,0 +1,154 @@
+// Prisma Schema for Vana Source Query
+// Optional PostgreSQL backend (Neon.tech) for auth, pack cache, and chat history
+
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../src/generated/prisma"
+  previewFeatures = []
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// NextAuth.js Models (required for @auth/prisma-adapter)
+// ============================================================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+
+  // GitHub-specific fields (populated from OAuth)
+  githubId      Int?      @unique
+  githubLogin   String?   // GitHub username
+
+  accounts      Account[]
+  sessions      Session[]
+  conversations Conversation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ============================================================================
+// Pack Cache
+// Shared across users for public repos (same repo+branch+SHA+config = same output)
+// ============================================================================
+
+model PackCache {
+  // Composite key: "owner/repo:branch:sha:configHash"
+  key             String @id
+
+  // Parsed key components (for querying)
+  repoFullName    String // "owner/repo"
+  branch          String
+  commitSha       String
+  sliceConfigHash String
+
+  // The packed output (can be large, several MB)
+  packedOutput    String @db.Text
+
+  // Stats from Repomix
+  stats           Json // { fileCount, approxChars, approxTokens }
+
+  // Optional: authoritative token count from Gemini
+  geminiTokens    Int?
+
+  // Size tracking for LRU eviction
+  sizeBytes       Int
+
+  // Visibility: only public repos are shared across users
+  isPublic        Boolean @default(true)
+
+  // Timestamps
+  cachedAt        DateTime @default(now())
+  lastAccessedAt  DateTime @default(now())
+
+  @@index([repoFullName])
+  @@index([repoFullName, branch])
+  @@index([lastAccessedAt])
+  @@index([isPublic, repoFullName, branch, sliceConfigHash])
+  @@map("pack_cache")
+}
+
+// ============================================================================
+// Conversations (per-user)
+// ============================================================================
+
+model Conversation {
+  id              String   @id @default(cuid())
+  userId          String
+  name            String
+
+  // Messages stored as JSON array
+  // [{ id, role: 'user'|'model', content, timestamp }]
+  messages        Json     @default("[]")
+
+  // Snapshot of repo selections when conversation was created
+  repoSelections  Json?
+
+  // Token usage tracking
+  // { totalPromptTokens, totalOutputTokens, history: [...] }
+  tokenUsage      Json?
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime @default(now())
+  lastUpdatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, lastUpdatedAt(sort: Desc)])
+  @@map("conversations")
+}
