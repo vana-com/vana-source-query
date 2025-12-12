@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
+import { useSession } from "next-auth/react";
 import {
   GitHubRepo,
   RepoSelection,
@@ -17,15 +18,20 @@ import { assemblePackedContext } from "@/lib/assembly";
 import { Chat } from "@/app/components/Chat";
 import { SystemPromptField } from "@/app/components/SystemPromptField";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
+import { UserMenu } from "@/app/components/UserMenu";
 import {
   listConversations,
   createConversation,
   updateConversation,
   deleteConversation,
-} from "@/lib/chatDb";
+} from "@/lib/conversations";
 import { getCachedRepoBranches } from "@/lib/packCache";
 
 export default function Home() {
+  // Auth state for conversation routing (server vs IndexedDB)
+  const { data: session, status: authStatus } = useSession();
+  const isAuthenticated = authStatus === "authenticated" && !!session;
+
   // State - initialize with defaults, load from cache after mount
   const [orgName, setOrgName] = useState(
     process.env.NEXT_PUBLIC_GITHUB_ORG || "vana-com"
@@ -208,14 +214,17 @@ export default function Home() {
   }, [geminiModel, availableModels, thinkingBudget]);
 
   // Load conversations on mount and auto-create if none exist
+  // Wait for auth status to be resolved before loading
   useEffect(() => {
+    if (authStatus === "loading") return; // Wait for auth to resolve
+
     async function loadConvos() {
-      const convos = await listConversations();
+      const convos = await listConversations(isAuthenticated);
       setConversations(convos);
 
       if (convos.length === 0) {
         // No conversations - create default one
-        const newConvo = await createConversation("Chat 1");
+        const newConvo = await createConversation(isAuthenticated, "Chat 1");
         setConversations([newConvo]);
         setActiveConversationId(newConvo.id);
       } else {
@@ -224,7 +233,7 @@ export default function Home() {
       }
     }
     loadConvos();
-  }, []);
+  }, [authStatus, isAuthenticated]);
 
   // Auto-load repos on mount
   useEffect(() => {
@@ -507,10 +516,16 @@ export default function Home() {
         useDefaultPatterns,
       };
 
-      const repoSelections = Array.from(selectedRepos).map((fullName) => ({
-        fullName,
-        branch: repoBranches[fullName], // optional branch override
-      }));
+      // Build repo selections with proper branch resolution
+      // Use explicit override if set, otherwise fall back to repo's defaultBranch
+      const allRepos = [...repos, ...Array.from(addedExternalRepos.values())];
+      const repoSelections = Array.from(selectedRepos).map((fullName) => {
+        const repo = allRepos.find(r => r.fullName === fullName);
+        return {
+          fullName,
+          branch: repoBranches[fullName] || repo?.defaultBranch || 'main',
+        };
+      });
 
       // Step 1: Fetch current SHAs for all repos (~200ms)
       const { fetchRepoSHAs, checkPackCache, storePackResult } = await import(
@@ -570,7 +585,7 @@ export default function Home() {
 
       // Save repo selections to active conversation
       if (activeConversationId) {
-        await updateConversation(activeConversationId, { repoSelections });
+        await updateConversation(activeConversationId, isAuthenticated, { repoSelections });
         console.log("[page] Saved repo selections to conversation:", repoSelections);
       }
 
@@ -747,6 +762,7 @@ export default function Home() {
   const handleNewConversation = async () => {
     try {
       const newConvo = await createConversation(
+        isAuthenticated,
         `Chat ${conversations.length + 1}`
       );
       setConversations([newConvo, ...conversations]);
@@ -798,7 +814,7 @@ export default function Home() {
     if (!newName.trim()) return;
 
     try {
-      await updateConversation(conversationId, { name: newName.trim() });
+      await updateConversation(conversationId, isAuthenticated, { name: newName.trim() });
       setConversations(
         conversations.map((c) =>
           c.id === conversationId ? { ...c, name: newName.trim() } : c
@@ -820,7 +836,7 @@ export default function Home() {
     }
 
     try {
-      await deleteConversation(conversationId);
+      await deleteConversation(conversationId, isAuthenticated);
       const remaining = conversations.filter((c) => c.id !== conversationId);
       setConversations(remaining);
 
@@ -868,9 +884,10 @@ export default function Home() {
     // If we update name simultaneously, one overwrites the other
     // Wait 100ms for message save to complete, then update name
     const conversationId = activeConversationId; // Capture for closure
+    const authState = isAuthenticated; // Capture auth state for closure
     setTimeout(async () => {
       try {
-        await updateConversation(conversationId, { name: autoName });
+        await updateConversation(conversationId, authState, { name: autoName });
 
         // Update React state with latest conversations
         setConversations((prevConvos) =>
@@ -1010,7 +1027,8 @@ export default function Home() {
           </svg>
         </button>
         <Image src="/icon-no-bg.png" alt="Vana Logo" width={24} height={24} />
-        <span className="font-semibold text-sm">Vana Source Query</span>
+        <span className="font-semibold text-sm flex-1">Vana Source Query</span>
+        <UserMenu />
       </div>
 
       {/* Backdrop (mobile only) */}
@@ -1066,7 +1084,7 @@ export default function Home() {
                 </svg>
               </button>
 
-              {/* Logo + Title */}
+              {/* Logo + Title + User Menu */}
               <div className="flex items-center gap-2 mb-3">
                 <Image
                   src="/icon-no-bg.png"
@@ -1078,6 +1096,9 @@ export default function Home() {
                   <h1 className="text-base font-bold truncate">
                     Vana Source Query
                   </h1>
+                </div>
+                <div className="hidden lg:block">
+                  <UserMenu />
                 </div>
               </div>
 
@@ -2082,6 +2103,7 @@ export default function Home() {
                     : undefined
                 }
                 systemPrompt={systemPrompt}
+                isAuthenticated={isAuthenticated}
                 onFirstMessage={handleFirstMessage}
                 onConversationLoad={handleConversationLoad}
                 onTokenCountChange={setChatTokens}

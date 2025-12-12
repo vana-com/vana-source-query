@@ -50,6 +50,7 @@ export interface PackedRepo {
     approxTokens: number // rough estimate: chars / 4
   }
   error?: string
+  cached?: boolean // true if served from Postgres cache
 }
 
 export interface PackResult {
